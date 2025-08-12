@@ -7,7 +7,7 @@ interface CharacterProps {
 }
 
 const Character = forwardRef<HTMLDivElement, CharacterProps>(
-  ({ isMoving = false, className = '', style = {} }, ref) => {
+  ({ className = '', style = {} }, ref) => {
     return (
       <div
         ref={ref}
