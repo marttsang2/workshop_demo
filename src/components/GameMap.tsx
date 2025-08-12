@@ -1,10 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { gsap } from 'gsap'
-import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
-import Character from './Character'
-
-// Register the MotionPath plugin
-gsap.registerPlugin(MotionPathPlugin)
+import { useEffect, useRef, useState, useCallback } from 'react'
 
 interface Position {
   x: number
@@ -47,288 +41,198 @@ const workshopData: Record<string, Workshop> = {
 }
 
 const GameMap: React.FC = () => {
-  const mapRef = useRef<HTMLDivElement>(null)
-  const characterRef = useRef<HTMLDivElement>(null)
-  const [characterPosition, setCharacterPosition] = useState<Position>({ x: 2, y: 2 })
-  const [isMoving, setIsMoving] = useState(false)
-  const [previewPath, setPreviewPath] = useState<string>('')
-  const [showPreview, setShowPreview] = useState(false)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const tileImageRef = useRef<HTMLImageElement | null>(null)
   const [currentWorkshop, setCurrentWorkshop] = useState<Workshop | null>(null)
+  const [hoveredTile, setHoveredTile] = useState<Position | null>(null)
+  const [selectedTile, setSelectedTile] = useState<Position | null>(null)
 
-  // Grid configuration for mobile vertical layout
-  const GRID_COLS = 5
-  const GRID_ROWS = 5
-  const BLOCK_SIZE = 80 // 80px blocks for better mobile touch targets
+  // Isometric configuration
+  const GRID_COLS = 7
+  const GRID_ROWS = 7
+  const TILE_WIDTH = 128  // Width of the isometric tile for drawing
+  const TILE_HEIGHT = 64  // Height of the isometric tile for drawing
+  const TILE_DEPTH = 40   // Depth of the tile (3D part)
+  // Actual spacing between tiles for the flat map effect
+  const TILE_SPACING_X = 64  // Horizontal spacing between tile centers
+  const TILE_SPACING_Y = 30  // Vertical spacing between tile centers
 
-  useEffect(() => {
-    // Initialize character position animation - center it in the block
-    if (characterRef.current) {
-      gsap.set(characterRef.current, {
-        x: characterPosition.x * BLOCK_SIZE + BLOCK_SIZE / 2,
-        y: characterPosition.y * BLOCK_SIZE + BLOCK_SIZE / 2,
-        scale: 1,
-        rotation: -45,
-        xPercent: -50, // Center the character horizontally
-        yPercent: -50  // Center the character vertically
-      })
+  // Convert tile coordinates to screen coordinates
+  const tileToScreen = useCallback((tileX: number, tileY: number) => {
+    const screenX = (tileX - tileY) * TILE_SPACING_X + canvasRef.current!.width / 2
+    const screenY = (tileX + tileY) * TILE_SPACING_Y + 150  // Adjusted offset
+    return { x: screenX, y: screenY }
+  }, [])
 
-      // Entrance animation
-      gsap.fromTo(characterRef.current,
-        { scale: 0, rotation: 135 },
-        { scale: 1, rotation: -45, duration: 0.8, ease: "back.out(1.7)" }
-      )
+  // Convert screen coordinates to tile coordinates
+  const screenToTile = useCallback((screenX: number, screenY: number) => {
+    const offsetX = screenX - canvasRef.current!.width / 2
+    const offsetY = screenY - 150  // Match the offset in tileToScreen
+    // Use the exact same spacing values for accurate detection
+    const tileX = Math.round((offsetX / TILE_SPACING_X + offsetY / TILE_SPACING_Y) / 2)
+    const tileY = Math.round((offsetY / TILE_SPACING_Y - offsetX / TILE_SPACING_X) / 2)
+    return { x: tileX, y: tileY }
+  }, [])
+
+  // Draw the isometric map
+  const drawMap = useCallback(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx || !tileImageRef.current) return
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // Draw tiles in correct order for isometric depth
+    for (let y = 0; y < GRID_ROWS; y++) {
+      for (let x = 0; x < GRID_COLS; x++) {
+        const screenPos = tileToScreen(x, y)
+        
+        // Check if this tile is hovered or selected
+        const isHovered = hoveredTile && hoveredTile.x === x && hoveredTile.y === y
+        const isSelected = selectedTile && selectedTile.x === x && selectedTile.y === y
+        
+        // Draw tile image
+        ctx.save()
+        if (isHovered) {
+          ctx.globalAlpha = 0.8
+        }
+        // Draw tiles with their original size but tighter spacing
+        ctx.drawImage(
+          tileImageRef.current,
+          screenPos.x - 64,  // Use original half-width for drawing
+          screenPos.y - TILE_DEPTH,
+          TILE_WIDTH,
+          TILE_HEIGHT + TILE_DEPTH
+        )
+        ctx.restore()
+
+        // Draw hover or selection effect at the base of the tile
+        if (isHovered || isSelected) {
+          ctx.save()
+          ctx.strokeStyle = isSelected ? '#10B981' : '#F59E0B'
+          ctx.lineWidth = isSelected ? 4 : 3
+          ctx.beginPath()
+          // Draw diamond outline at the base (ground level)
+          ctx.moveTo(screenPos.x, screenPos.y)
+          ctx.lineTo(screenPos.x + 64, screenPos.y + 32)
+          ctx.lineTo(screenPos.x, screenPos.y + 64)
+          ctx.lineTo(screenPos.x - 64, screenPos.y + 32)
+          ctx.closePath()
+          ctx.stroke()
+          ctx.restore()
+        }
+
+        // Check for workshop marker
+        const posKey = `${x},${y}`
+        if (workshopData[posKey]) {
+          // Draw workshop indicator
+          ctx.save()
+          ctx.fillStyle = '#F59E0B'
+          ctx.beginPath()
+          ctx.arc(screenPos.x, screenPos.y + TILE_SPACING_Y, 8, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.restore()
+        }
+      }
     }
+  }, [hoveredTile, tileToScreen])
 
-    // Check if character starts on a workshop position
-    const initialPositionKey = `${characterPosition.x},${characterPosition.y}`
-    const initialWorkshop = workshopData[initialPositionKey]
-    if (initialWorkshop) {
-      setCurrentWorkshop(initialWorkshop)
+  // Load tile image
+  useEffect(() => {
+    const img = new Image()
+    img.src = '/test_grid.png'
+    img.onload = () => {
+      tileImageRef.current = img
+      drawMap()
     }
   }, [])
 
-  // Debug effect to monitor currentWorkshop state
+  // Redraw when hover or selection changes
   useEffect(() => {
-    console.log('Current workshop state changed:', currentWorkshop)
-  }, [currentWorkshop])
+    drawMap()
+  }, [hoveredTile, selectedTile, drawMap])
 
-  const createPath = (startX: number, startY: number, endX: number, endY: number): string => {
-    const startPixelX = startX * BLOCK_SIZE + BLOCK_SIZE / 2
-    const startPixelY = startY * BLOCK_SIZE + BLOCK_SIZE / 2
-    const endPixelX = endX * BLOCK_SIZE + BLOCK_SIZE / 2
-    const endPixelY = endY * BLOCK_SIZE + BLOCK_SIZE / 2
+  // Initialize canvas
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
 
-    // Calculate distance for curve intensity
-    const distance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2))
-    const curveIntensity = Math.min(distance * 15, 60) // Max curve of 60px
-
-    // Create control points for a smooth curve
-    const midX = (startPixelX + endPixelX) / 2
-    const midY = (startPixelY + endPixelY) / 2
+    // Set canvas size
+    canvas.width = 800
+    canvas.height = 600
     
-    // Add perpendicular offset for curve
-    const deltaX = endPixelX - startPixelX
-    const deltaY = endPixelY - startPixelY
-    const perpX = -deltaY
-    const perpY = deltaX
-    const length = Math.sqrt(perpX * perpX + perpY * perpY)
-    
-    let controlX = midX
-    let controlY = midY
-    
-    if (length > 0) {
-      controlX += (perpX / length) * curveIntensity * 0.5
-      controlY += (perpY / length) * curveIntensity * 0.5
+    // Disable image smoothing for pixel-perfect rendering
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      ctx.imageSmoothingEnabled = false
     }
 
-    // Create SVG path with quadratic curve
-    return `M ${startPixelX} ${startPixelY} Q ${controlX} ${controlY} ${endPixelX} ${endPixelY}`
-  }
+    // Initial draw
+    drawMap()
+  }, [])
 
-  const moveCharacter = (targetX: number, targetY: number) => {
-    if (isMoving || !characterRef.current) return
 
-    setIsMoving(true)
 
-    // Create curved path between current and target positions
-    const path = createPath(characterPosition.x, characterPosition.y, targetX, targetY)
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
     
-    // Calculate movement distance for duration
-    const distance = Math.sqrt(
-      Math.pow(targetX - characterPosition.x, 2) + 
-      Math.pow(targetY - characterPosition.y, 2)
-    )
-    const duration = Math.max(0.8, distance * 0.3) // Minimum 0.8s, scale with distance
-
-    // Create movement timeline
-    const tl = gsap.timeline({
-      onComplete: () => {
-        // Ensure character is exactly centered in the target block
-        if (characterRef.current) {
-          gsap.set(characterRef.current, {
-            x: targetX * BLOCK_SIZE + BLOCK_SIZE / 2,
-            y: targetY * BLOCK_SIZE + BLOCK_SIZE / 2,
-            xPercent: -50,
-            yPercent: -50,
-            rotation: -45
-          })
-        }
-        setCharacterPosition({ x: targetX, y: targetY })
-        
-        // Check if character entered a workshop position
-        const positionKey = `${targetX},${targetY}`
-        const workshop = workshopData[positionKey]
-        console.log('Position:', positionKey, 'Workshop:', workshop) // Debug log
-        if (workshop) {
-          setCurrentWorkshop(workshop)
-        } else {
-          setCurrentWorkshop(null)
-        }
-        
-        setIsMoving(false)
-      }
-    })
-
-    // Character bounce animation at start
-    tl.to(characterRef.current, {
-      scale: 1.2,
-      duration: 0.15,
-      ease: "power2.out"
-    })
-    .to(characterRef.current, {
-      scale: 1,
-      duration: 0.15,
-      ease: "power2.in"
-    })
-    
-    // Motion path animation without autoRotate to maintain direction
-    .to(characterRef.current, {
-      motionPath: {
-        path: path,
-        autoRotate: false,
-        alignOrigin: [0.5, 0.5],
-      },
-      rotation: -45, // Explicitly maintain rotation at -45 degrees
-      duration: duration,
-      ease: "power2.inOut"
-    }, "-=0.1")
-    
-    // Landing bounce
-    .to(characterRef.current, {
-      scale: 1.1,
-      duration: 0.1,
-      ease: "power2.out"
-    })
-    .to(characterRef.current, {
-      scale: 1,
-      rotation: -45, // Reset rotation to -45 degrees after movement
-      duration: 0.2,
-      ease: "back.out(1.7)"
-    })
-  }
-
-  const handleBlockClick = (blockX: number, blockY: number) => {
-    if (blockX === characterPosition.x && blockY === characterPosition.y) return
-    setShowPreview(false)
-    moveCharacter(blockX, blockY)
-  }
-
-  const handleBlockHover = (blockX: number, blockY: number) => {
-    if (isMoving || (blockX === characterPosition.x && blockY === characterPosition.y)) {
-      setShowPreview(false)
-      return
-    }
-    
-    const path = createPath(characterPosition.x, characterPosition.y, blockX, blockY)
-    setPreviewPath(path)
-    setShowPreview(true)
-  }
-
-  const handleBlockLeave = () => {
-    setShowPreview(false)
-  }
-
-
-
-  const renderGrid = () => {
-    const blocks = []
-    for (let y = 0; y < GRID_ROWS; y++) {
-      for (let x = 0; x < GRID_COLS; x++) {
-        const isCharacterBlock = x === characterPosition.x && y === characterPosition.y
-        const isClickable = !isMoving
-
-        blocks.push(
-          <div
-            key={`${x}-${y}`}
-            className={`
-              absolute transition-all duration-200 cursor-pointer overflow-hidden
-              ${isCharacterBlock 
-                ? '' 
-                : 'hover:bg-game-primary hover:bg-opacity-25 rounded-lg'
-              }
-              ${isClickable ? 'active:scale-95' : 'pointer-events-none opacity-50'}
-            `}
-            style={{
-              width: BLOCK_SIZE,
-              height: BLOCK_SIZE,
-              left: x * BLOCK_SIZE,
-              top: y * BLOCK_SIZE,
-            }}
-            onClick={() => handleBlockClick(x, y)}
-            onMouseEnter={() => handleBlockHover(x, y)}
-            onMouseLeave={handleBlockLeave}
-            onTouchStart={() => handleBlockHover(x, y)}
-          >
-            {/* Grass block background image */}
-            <img 
-              src="/test_grid.png"
-              alt="Grass block"
-              className="absolute inset-0 w-full h-full object-cover"
-              style={{ transform: 'rotate(-45deg)', scale: 1.2 }}
-              draggable={false}
-            />
-            {/* Block coordinates for debugging */}
-            {/* <div className="text-xs text-white opacity-50 p-1 relative z-10">
-              {x},{y}
-            </div> */}
-          </div>
-        )
+    const tile = screenToTile(x, y)
+    if (tile.x >= 0 && tile.x < GRID_COLS && tile.y >= 0 && tile.y < GRID_ROWS) {
+      setSelectedTile(tile)
+      
+      // Check if clicked on a workshop position
+      const positionKey = `${tile.x},${tile.y}`
+      const workshop = workshopData[positionKey]
+      if (workshop) {
+        setCurrentWorkshop(workshop)
+      } else {
+        setCurrentWorkshop(null)
       }
     }
-    return blocks
   }
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    
+    const tile = screenToTile(x, y)
+    if (tile.x >= 0 && tile.x < GRID_COLS && tile.y >= 0 && tile.y < GRID_ROWS) {
+      setHoveredTile(tile)
+    } else {
+      setHoveredTile(null)
+    }
+  }
+
+  const handleCanvasMouseLeave = () => {
+    setHoveredTile(null)
+  }
+
 
   return (
     <div className="w-full h-full bg-gradient-to-b from-slate-800 via-slate-700 to-slate-600 relative overflow-hidden flex items-center justify-center">
       
       <div className="flex items-center justify-center gap-28 max-w-7xl mx-auto px-4">
         {/* Game map container */}
-        <div
-          ref={mapRef}
-          className="relative flex-shrink-0"
-          style={{
-            width: GRID_COLS * BLOCK_SIZE,
-            height: GRID_ROWS * BLOCK_SIZE,
-            transform: 'rotate(45deg)'
-          }}
-        >
-          {/* Grid blocks */}
-          {renderGrid()}
-
-          {/* Path preview overlay */}
-          {showPreview && (
-            <svg
-              className="absolute inset-0 pointer-events-none z-5"
-              width={GRID_COLS * BLOCK_SIZE}
-              height={GRID_ROWS * BLOCK_SIZE}
-            >
-              <path
-                d={previewPath}
-                stroke="#F59E0B"
-                strokeWidth="3"
-                strokeDasharray="8,4"
-                fill="none"
-                opacity="0.8"
-              />
-              {/* Add animated dots along the path */}
-              <circle r="4" fill="#F59E0B" opacity="0.6">
-                <animateMotion dur="2s" repeatCount="indefinite">
-                  <mpath href={`#path-${Date.now()}`} />
-                </animateMotion>
-              </circle>
-              <path id={`path-${Date.now()}`} d={previewPath} stroke="none" fill="none" />
-            </svg>
-          )}
-
-          {/* Character */}
-          <Character
-            ref={characterRef}
-            isMoving={isMoving}
-            style={{
-              width: BLOCK_SIZE,
-              height: BLOCK_SIZE,
-            }}
+        <div className="relative flex-shrink-0">
+          {/* Canvas for isometric map */}
+          <canvas
+            ref={canvasRef}
+            className="cursor-pointer"
+            onClick={handleCanvasClick}
+            onMouseMove={handleCanvasMouseMove}
+            onMouseLeave={handleCanvasMouseLeave}
           />
+
         </div>
 
         {/* Workshop Information Card */}
@@ -360,13 +264,9 @@ const GameMap: React.FC = () => {
       {/* Instructions */}
       <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-50 rounded-2xl p-3">
         <p className="text-white text-sm text-center">
-          {isMoving 
-            ? '🌟 Following curved path...' 
-            : showPreview 
-              ? '✨ Curved path preview - tap to move!' 
-              : currentWorkshop
-                ? '📚 Workshop discovered! Move to explore more.'
-                : '👆 Hover/tap blocks to see curved paths'
+          {currentWorkshop
+            ? 'Workshop discovered! Click other tiles to explore more.'
+            : 'Click on tiles to explore the isometric map'
           }
         </p>
       </div>
@@ -374,7 +274,7 @@ const GameMap: React.FC = () => {
       {/* Position indicator */}
       <div className="absolute top-4 left-4 bg-black bg-opacity-50 rounded-lg p-2">
         <p className="text-white text-xs">
-          Position: ({characterPosition.x}, {characterPosition.y})
+          {selectedTile ? `Selected: (${selectedTile.x}, ${selectedTile.y})` : 'No tile selected'}
         </p>
       </div>
     </div>
