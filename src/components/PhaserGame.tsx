@@ -2,11 +2,7 @@ import { useEffect, useRef } from 'react'
 import Phaser from 'phaser'
 import IsometricScene from '../game/scenes/IsometricScene'
 
-interface PhaserGameProps {
-  selectedBuilding: string | null
-}
-
-const PhaserGame: React.FC<PhaserGameProps> = ({ selectedBuilding }) => {
+const PhaserGame: React.FC = () => {
   const gameRef = useRef<Phaser.Game | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -16,8 +12,12 @@ const PhaserGame: React.FC<PhaserGameProps> = ({ selectedBuilding }) => {
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
       parent: containerRef.current,
-      width: 800,
-      height: 600,
+      width: '100%',
+      height: '100%',
+      scale: {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+      },
       scene: [IsometricScene],
       physics: {
         default: 'arcade',
@@ -37,15 +37,6 @@ const PhaserGame: React.FC<PhaserGameProps> = ({ selectedBuilding }) => {
       }
     }
   }, [])
-
-  useEffect(() => {
-    if (gameRef.current && selectedBuilding) {
-      const scene = gameRef.current.scene.getScene('IsometricScene') as IsometricScene
-      if (scene && scene.scene.isActive()) {
-        scene.setSelectedBuilding(selectedBuilding)
-      }
-    }
-  }, [selectedBuilding])
 
   return <div ref={containerRef} className="phaser-container" />
 }
