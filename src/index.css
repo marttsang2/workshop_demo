@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mobile-first base styles for game */
+@layer base {
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+  }
+  
+  * {
+    box-sizing: border-box;
+  }
+  
+  /* Prevent zoom on iOS */
+  input, textarea, select {
+    font-size: 16px;
+  }
+}
+
+/* Game-specific component styles */
+@layer components {
+  .game-container {
+    @apply w-full h-screen bg-game-dark overflow-hidden relative;
+  }
+  
+  .game-ui {
+    @apply absolute top-0 left-0 w-full h-full pointer-events-none z-10;
+  }
+  
+  .game-ui > * {
+    @apply pointer-events-auto;
+  }
+  
+  .touch-button {
+    @apply bg-game-primary text-white rounded-lg shadow-lg active:scale-95 transition-transform duration-75 select-none;
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  .game-score {
+    @apply text-white font-bold text-2xl drop-shadow-lg;
+  }
+}
+
+/* Utility classes for animations */
+@layer utilities {
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  
+  .no-drag {
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+  }
+}

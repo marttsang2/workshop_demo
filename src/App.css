@@ -1,0 +1,5 @@
+/* Additional game-specific styles */
+.game-container {
+  position: relative;
+  overflow: hidden;
+}
