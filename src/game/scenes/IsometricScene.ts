@@ -6,12 +6,18 @@ interface TileData {
   occupied: boolean
   building?: Phaser.GameObjects.Image
   tile: Phaser.GameObjects.Image
+  groundType: string // 'grass', 'road_1', 'road_2', etc.
 }
 
-interface BuildingButton {
+interface BuildingSize {
+  width: number
+  height: number
+}
+
+interface CategoryButton {
   bg: Phaser.GameObjects.Rectangle
   icon: Phaser.GameObjects.Text
-  key: string
+  category: string
 }
 
 export default class IsometricScene extends Phaser.Scene {
@@ -23,7 +29,8 @@ export default class IsometricScene extends Phaser.Scene {
   private highlightGraphics: Phaser.GameObjects.Graphics | null = null
   private gridContainer: Phaser.GameObjects.Container | null = null
   private uiContainer: Phaser.GameObjects.Container | null = null
-  private buildingButtons: BuildingButton[] = []
+  private categoryButtons: CategoryButton[] = []
+  private currentCategory = 'apartments'
   private buildings: Phaser.GameObjects.Image[] = []
   private isDragging = false
   private dragStartX = 0
@@ -38,6 +45,7 @@ export default class IsometricScene extends Phaser.Scene {
   preload() {
     this.load.image('ground_tile', 'test_grid.png')
     
+    // Load apartments
     const apartmentTypes = ['Blue', 'Green', 'Grey', 'Pink', 'Red', 'Yellow']
     const sizes = ['1x1', '1x2', '2x2']
     const levels = ['Level1', 'Level2', 'Level3']
@@ -51,6 +59,16 @@ export default class IsometricScene extends Phaser.Scene {
         })
       })
     })
+    
+    // Load road tiles
+    for (let i = 1; i <= 9; i++) {
+      this.load.image(`road_${i}`, `GiantCityBuilder/Tiles/Road_Tile${i}.png`)
+    }
+    
+    // Load grass road tiles
+    for (let i = 1; i <= 9; i++) {
+      this.load.image(`grass_road_${i}`, `GiantCityBuilder/Tiles/GrassRoad_Tile${i}.png`)
+    }
   }
 
   create() {
@@ -79,7 +97,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Reposition UI container at bottom
     if (this.uiContainer) {
-      this.uiContainer.setPosition(width / 2, height - 80)
+      this.uiContainer.setPosition(width / 2, height - 60)
     }
     
     // Center grid if not being dragged
@@ -93,78 +111,290 @@ export default class IsometricScene extends Phaser.Scene {
     const height = this.scale.height
     
     // Create UI container for building menu
-    this.uiContainer = this.add.container(width / 2, height - 80)
+    this.uiContainer = this.add.container(width / 2, height - 60)
     
     // Create semi-transparent background bar
-    const bgBar = this.add.rectangle(0, 0, width, 120, 0x000000, 0.7)
+    const bgBar = this.add.rectangle(0, 0, width, 80, 0x000000, 0.7)
     this.uiContainer.add(bgBar)
     
-    // Create building buttons
-    const buildings = [
-      { key: 'apartment_Blue_1x1_Level1', icon: '🏠', color: 0x3498db },
-      { key: 'apartment_Green_1x1_Level1', icon: '🏡', color: 0x27ae60 },
-      { key: 'apartment_Red_1x1_Level1', icon: '🏘️', color: 0xe74c3c },
-      { key: 'apartment_Yellow_1x1_Level1', icon: '🏢', color: 0xf39c12 },
-      { key: 'apartment_Pink_1x1_Level1', icon: '🏛️', color: 0xe91e63 },
-      { key: 'apartment_Grey_1x1_Level1', icon: '🏗️', color: 0x95a5a6 }
+    // Create category buttons
+    const categories = [
+      { category: 'apartments', icon: '🏠', color: 0x3498db },
+      { category: 'roads', icon: '🛤️', color: 0x95a5a6 },
+      { category: 'delete', icon: '❌', color: 0xe74c3c },
+      { category: 'world', icon: '🌐', color: 0xf39c12 }
     ]
     
-    buildings.forEach((building, index) => {
-      const x = (index - 2.5) * 80
+    categories.forEach((cat, index) => {
+      const x = (index - 1.5) * 70 - 250
       
-      // Button background
-      const button = this.add.rectangle(x, 0, 60, 60, building.color, 0.9)
+      // Category button
+      const button = this.add.rectangle(x, 0, 55, 55, cat.color, 0.9)
       button.setInteractive({ useHandCursor: true })
-      button.setStrokeStyle(3, 0xffffff, 0.5)
+      button.setStrokeStyle(2, 0xffffff, 0.5)
       
-      // Button icon
-      const icon = this.add.text(x, 0, building.icon, {
-        fontSize: '28px',
+      // Category icon
+      const icon = this.add.text(x, 0, cat.icon, {
+        fontSize: '24px',
         align: 'center'
       }).setOrigin(0.5)
       
-      this.uiContainer.add([button, icon])
+      this.uiContainer?.add([button, icon])
       
-      // Store button reference
-      const btnData: BuildingButton = {
+      // Store category button
+      const catBtn: CategoryButton = {
         bg: button,
         icon: icon,
-        key: building.key
+        category: cat.category
       }
-      this.buildingButtons.push(btnData)
+      this.categoryButtons.push(catBtn)
       
-      // Button interactions
+      // Category button interactions
+      button.on('pointerdown', () => {
+        this.showBuildingPanel(cat.category)
+        this.updateCategoryButtons(cat.category)
+      })
+      
       button.on('pointerover', () => {
         button.setScale(1.1)
         icon.setScale(1.1)
       })
       
       button.on('pointerout', () => {
-        if (this.selectedBuilding !== building.key) {
+        if (this.currentCategory !== cat.category) {
           button.setScale(1)
           icon.setScale(1)
         }
-      })
-      
-      button.on('pointerdown', () => {
-        this.selectBuilding(building.key)
-        // Update all buttons visual state
-        this.buildingButtons.forEach(btn => {
-          if (btn.key === building.key) {
-            btn.bg.setScale(1.1)
-            btn.bg.setStrokeStyle(3, 0xffd700, 1)
-            btn.icon.setScale(1.1)
-          } else {
-            btn.bg.setScale(1)
-            btn.bg.setStrokeStyle(3, 0xffffff, 0.5)
-            btn.icon.setScale(1)
-          }
-        })
       })
     })
     
     // Make UI always on top
     this.uiContainer.setDepth(10000)
+    
+  }
+  
+  private showBuildingPanel(category: string) {
+    this.currentCategory = category
+    
+    if (category === 'delete') {
+      // Delete mode
+      this.selectedBuilding = null
+      return
+    }
+    
+    if (category === 'world') {
+      // World options - for future implementation
+      return
+    }
+    
+    // Create dialog container
+    const width = this.scale.width
+    const height = this.scale.height
+    
+    // Create fullscreen overlay
+    const overlay = this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.7)
+    overlay.setInteractive() // Block clicks underneath
+    overlay.setDepth(20000)
+    
+    // Create dialog container
+    const dialogContainer = this.add.container(width/2, height/2)
+    dialogContainer.setDepth(20001)
+    
+    // Dialog background
+    const dialogWidth = 700
+    const dialogHeight = 500
+    const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x2c3e50, 1)
+    dialogBg.setStrokeStyle(3, 0xffffff, 0.8)
+    dialogContainer.add(dialogBg)
+    
+    // Title bar
+    const titleBar = this.add.rectangle(0, -dialogHeight/2 + 30, dialogWidth, 60, 0x34495e, 1)
+    dialogContainer.add(titleBar)
+    
+    // Title text
+    const titleText = this.add.text(0, -dialogHeight/2 + 30, 
+      category === 'apartments' ? '🏠 Select Apartment' : '🛤️ Select Road', {
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5)
+    dialogContainer.add(titleText)
+    
+    // Close button
+    const closeBtn = this.add.rectangle(dialogWidth/2 - 30, -dialogHeight/2 + 30, 40, 40, 0xe74c3c, 1)
+    closeBtn.setInteractive({ useHandCursor: true })
+    closeBtn.setStrokeStyle(2, 0xffffff, 0.5)
+    dialogContainer.add(closeBtn)
+    
+    const closeText = this.add.text(dialogWidth/2 - 30, -dialogHeight/2 + 30, '✕', {
+      fontSize: '20px',
+      color: '#ffffff'
+    }).setOrigin(0.5)
+    dialogContainer.add(closeText)
+    
+    // Content area
+    const contentY = -dialogHeight/2 + 100
+    const gridCols = 4
+    const gridRows = 3
+    const itemSize = 120
+    const spacing = 20
+    
+    if (category === 'apartments') {
+      // All apartment combinations
+      const colors = ['Blue', 'Green', 'Red', 'Yellow', 'Pink', 'Grey']
+      const sizes = [
+        { size: '1x1', level: 'Level1', label: 'Small' },
+        { size: '1x2', level: 'Level1', label: 'Medium' },
+        { size: '2x2', level: 'Level1', label: 'Large' }
+      ]
+      
+      let itemIndex = 0
+      colors.forEach(color => {
+        sizes.forEach(sizeInfo => {
+          const row = Math.floor(itemIndex / gridCols)
+          const col = itemIndex % gridCols
+          
+          if (row < gridRows) {
+            const x = (col - gridCols/2 + 0.5) * (itemSize + spacing)
+            const y = contentY + row * (itemSize + spacing) + 50
+            
+            // Item background
+            const itemBg = this.add.rectangle(x, y, itemSize, itemSize, 0x465669, 1)
+            itemBg.setStrokeStyle(2, 0x667788, 0.5)
+            itemBg.setInteractive({ useHandCursor: true })
+            dialogContainer.add(itemBg)
+            
+            // Building image
+            const key = `apartment_${color}_${sizeInfo.size}_${sizeInfo.level}`
+            const img = this.add.image(x, y - 10, key)
+            
+            // Scale based on building size to fit in box
+            let scale = 0.12 // Default for 1x1
+            if (sizeInfo.size === '1x2') {
+              scale = 0.08 // Smaller for medium buildings
+            } else if (sizeInfo.size === '2x2') {
+              scale = 0.06 // Even smaller for large buildings
+            }
+            img.setScale(scale)
+            dialogContainer.add(img)
+            
+            // Label
+            const label = this.add.text(x, y + 45, `${color} ${sizeInfo.label}`, {
+              fontSize: '12px',
+              color: '#ffffff',
+              align: 'center'
+            }).setOrigin(0.5)
+            dialogContainer.add(label)
+            
+            // Interactions
+            itemBg.on('pointerover', () => {
+              itemBg.setFillStyle(0x556983)
+              img.setScale(scale * 1.1) // Scale up by 10% on hover
+            })
+            
+            itemBg.on('pointerout', () => {
+              itemBg.setFillStyle(0x465669)
+              img.setScale(scale) // Return to original scale
+            })
+            
+            itemBg.on('pointerdown', () => {
+              this.selectBuilding(key)
+              overlay.destroy()
+              dialogContainer.destroy(true)
+            })
+          }
+          itemIndex++
+        })
+      })
+    } else if (category === 'roads') {
+      const roads = [
+        { key: 'road_1', name: 'Straight →' },
+        { key: 'road_2', name: 'Straight ↓' },
+        { key: 'road_3', name: 'Turn ↘' },
+        { key: 'road_4', name: 'Turn ↙' },
+        { key: 'road_5', name: 'Turn ↗' },
+        { key: 'road_6', name: 'Turn ↖' },
+        { key: 'road_7', name: 'T-Junction ⊥' },
+        { key: 'road_8', name: 'Cross ✚' },
+        { key: 'road_9', name: 'End Cap' }
+      ]
+      
+      roads.forEach((road, index) => {
+        const row = Math.floor(index / gridCols)
+        const col = index % gridCols
+        
+        const x = (col - gridCols/2 + 0.5) * (itemSize + spacing)
+        const y = contentY + row * (itemSize + spacing) + 50
+        
+        // Item background
+        const itemBg = this.add.rectangle(x, y, itemSize, itemSize, 0x465669, 1)
+        itemBg.setStrokeStyle(2, 0x667788, 0.5)
+        itemBg.setInteractive({ useHandCursor: true })
+        dialogContainer.add(itemBg)
+        
+        // Road image
+        const img = this.add.image(x, y - 10, road.key)
+        img.setScale(0.18) // Smaller scale to fit in box
+        dialogContainer.add(img)
+        
+        // Label
+        const label = this.add.text(x, y + 45, road.name, {
+          fontSize: '12px',
+          color: '#ffffff',
+          align: 'center'
+        }).setOrigin(0.5)
+        dialogContainer.add(label)
+        
+        // Interactions
+        itemBg.on('pointerover', () => {
+          itemBg.setFillStyle(0x556983)
+          img.setScale(0.2) // Slightly larger on hover
+        })
+        
+        itemBg.on('pointerout', () => {
+          itemBg.setFillStyle(0x465669)
+          img.setScale(0.18) // Back to original
+        })
+        
+        itemBg.on('pointerdown', () => {
+          this.selectBuilding(road.key)
+          overlay.destroy()
+          dialogContainer.destroy(true)
+        })
+      })
+    }
+    
+    // Close button functionality
+    closeBtn.on('pointerover', () => {
+      closeBtn.setFillStyle(0xc0392b)
+      closeBtn.setScale(1.1)
+      closeText.setScale(1.1)
+    })
+    
+    closeBtn.on('pointerout', () => {
+      closeBtn.setFillStyle(0xe74c3c)
+      closeBtn.setScale(1)
+      closeText.setScale(1)
+    })
+    
+    closeBtn.on('pointerdown', () => {
+      overlay.destroy()
+      dialogContainer.destroy(true)
+    })
+  }
+  
+  private updateCategoryButtons(activeCategory: string) {
+    this.categoryButtons.forEach(btn => {
+      if (btn.category === activeCategory) {
+        btn.bg.setScale(1.1)
+        btn.bg.setStrokeStyle(3, 0xffd700, 1)
+        btn.icon.setScale(1.1)
+      } else {
+        btn.bg.setScale(1)
+        btn.bg.setStrokeStyle(2, 0xffffff, 0.5)
+        btn.icon.setScale(1)
+      }
+    })
   }
 
   private initializeGrid() {
@@ -175,7 +405,8 @@ export default class IsometricScene extends Phaser.Scene {
           x: x,
           y: y,
           occupied: false,
-          tile: null as any
+          tile: null as any,
+          groundType: 'grass'
         }
       }
     }
@@ -193,8 +424,10 @@ export default class IsometricScene extends Phaser.Scene {
         const tileScale = this.tileWidth / tile.width
         tile.setScale(tileScale)
         
-        // Correct depth calculation for isometric view
-        const depth = (row + col) * 100
+        // Depth calculation for isometric view
+        // Objects further down and to the right should appear on top
+        // Use row as primary sort, column as secondary
+        const depth = row * 1000 + col * 10
         tile.setDepth(depth)
         
         tile.setInteractive()
@@ -257,14 +490,40 @@ export default class IsometricScene extends Phaser.Scene {
         
         this.highlightGraphics.clear()
         
-        if (tile && this.selectedBuilding && !tile.occupied) {
-          const tileSprite = tile.tile
-          // Calculate world position considering container position and scale
-          const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
-          const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
+        if (tile && this.selectedBuilding) {
+          const isRoad = this.selectedBuilding.includes('road_') || this.selectedBuilding.includes('grass_road_')
           
-          this.highlightGraphics.lineStyle(3, 0x00ff00, 1)
-          this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
+          if (isRoad) {
+            // Roads always show green highlight (they replace ground)
+            this.highlightGraphics.lineStyle(3, 0x00ff00, 1)
+            const tileSprite = tile.tile
+            const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
+            const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
+            this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
+          } else {
+            // Buildings need to check for space
+            const buildingSize = this.getBuildingSize(this.selectedBuilding)
+            const canPlace = this.canPlaceBuilding(tile.x, tile.y, buildingSize)
+            
+            // Set color based on whether we can place
+            this.highlightGraphics.lineStyle(3, canPlace ? 0x00ff00 : 0xff0000, 1)
+            
+            // Draw highlight for all tiles the building will occupy
+            for (let dy = 0; dy < buildingSize.height; dy++) {
+              for (let dx = 0; dx < buildingSize.width; dx++) {
+                const highlightY = tile.y + dy
+                const highlightX = tile.x + dx
+                
+                if (highlightX < this.gridSize && highlightY < this.gridSize) {
+                  const highlightTile = this.tiles[highlightY][highlightX].tile
+                  const worldX = this.gridContainer.x + highlightTile.x * this.gridContainer.scale
+                  const worldY = this.gridContainer.y + highlightTile.y * this.gridContainer.scale
+                  
+                  this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
+                }
+              }
+            }
+          }
         }
       }
     })
@@ -289,7 +548,7 @@ export default class IsometricScene extends Phaser.Scene {
     })
     
     // Mouse wheel zoom
-    this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: any[], deltaX: number, deltaY: number) => {
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: any[], _deltaX: number, deltaY: number) => {
       if (this.gridContainer) {
         const zoom = this.gridContainer.scale
         const newZoom = Phaser.Math.Clamp(zoom - deltaY * 0.001, 0.5, 2)
@@ -304,22 +563,21 @@ export default class IsometricScene extends Phaser.Scene {
   private updateBuildingPositions() {
     if (!this.gridContainer) return
     
-    for (let row = 0; row < this.gridSize; row++) {
-      for (let col = 0; col < this.gridSize; col++) {
-        const tileData = this.tiles[row][col]
-        if (tileData.building && tileData.tile) {
-          const tile = tileData.tile
-          const building = tileData.building
-          
-          // Update building position based on container position and scale
-          building.x = this.gridContainer.x + tile.x * this.gridContainer.scale
-          building.y = this.gridContainer.y + tile.y * this.gridContainer.scale
-          
-          // Update building scale
-          building.setScale(tile.scaleX * this.gridContainer.scale)
-        }
+    // Update all buildings based on their stored local positions
+    this.buildings.forEach(building => {
+      const localX = building.getData('localX')
+      const localY = building.getData('localY')
+      
+      if (localX !== undefined && localY !== undefined) {
+        // Update building position based on container position and scale
+        building.x = this.gridContainer!.x + localX * this.gridContainer!.scale
+        building.y = this.gridContainer!.y + localY * this.gridContainer!.scale
+        
+        // Update building scale
+        const originalScale = this.tileWidth / 512 // Assuming 512 is the original tile image width
+        building.setScale(originalScale * this.gridContainer!.scale)
       }
-    }
+    })
   }
 
   private drawTileHighlight(x: number, y: number, scale: number = 1) {
@@ -361,32 +619,161 @@ export default class IsometricScene extends Phaser.Scene {
   private placeBuilding(tileData: TileData) {
     if (!this.selectedBuilding || !this.gridContainer) return
     
-    const tile = tileData.tile
-    // Place building at world position (accounting for container transform)
-    const worldX = this.gridContainer.x + tile.x * this.gridContainer.scale
-    const worldY = this.gridContainer.y + tile.y * this.gridContainer.scale
+    const gridX = tileData.x
+    const gridY = tileData.y
+    
+    // Check if this is a road tile
+    const isRoad = this.selectedBuilding.includes('road_') || this.selectedBuilding.includes('grass_road_')
+    
+    if (isRoad) {
+      // Roads replace the ground tile
+      this.placeRoad(tileData)
+      return
+    }
+    
+    // Regular building placement
+    const buildingSize = this.getBuildingSize(this.selectedBuilding)
+    
+    // Check if we can place the building
+    if (!this.canPlaceBuilding(gridX, gridY, buildingSize)) {
+      console.log('Cannot place building here - not enough space')
+      return
+    }
+    
+    // Calculate the center position based on all tiles the building will occupy
+    let totalX = 0
+    let totalY = 0
+    let tileCount = 0
+    
+    // Sum up all tile positions
+    for (let dy = 0; dy < buildingSize.height; dy++) {
+      for (let dx = 0; dx < buildingSize.width; dx++) {
+        const tileY = gridY + dy
+        const tileX = gridX + dx
+        const tile = this.tiles[tileY][tileX].tile
+        totalX += tile.x
+        totalY += tile.y
+        tileCount++
+      }
+    }
+    
+    // Get average position (center of all occupied tiles)
+    const localX = totalX / tileCount
+    const localY = totalY / tileCount
+    
+    // Calculate world position
+    const worldX = this.gridContainer.x + localX * this.gridContainer.scale
+    const worldY = this.gridContainer.y + localY * this.gridContainer.scale
     
     const building = this.add.image(worldX, worldY, this.selectedBuilding)
     building.setOrigin(0.5, 0.7)
     
+    // Store local position for updates
+    building.setData('localX', localX)
+    building.setData('localY', localY)
+    
     // Scale building to match tile size and container scale
-    const tileScale = tile.scaleX * this.gridContainer.scale
+    const baseTile = this.tiles[gridY][gridX].tile
+    const tileScale = baseTile.scaleX * this.gridContainer.scale
     building.setScale(tileScale)
     
-    // Get the actual grid coordinates from the tile data
-    const gridRow = tile.getData('gridY')
-    const gridCol = tile.getData('gridX')
-    
-    // Calculate depth - buildings stay at scene level with proper depth sorting
-    const depth = (gridRow + gridCol) * 100 + 50
+    // Calculate depth for isometric view
+    // For multi-tile buildings, use the furthest point (bottom-right) for depth
+    // This ensures proper sorting with other objects
+    const depthY = gridY + buildingSize.height - 1  // Bottom row of building
+    const depthX = gridX + buildingSize.width - 1   // Right column of building
+    const depth = depthY * 1000 + depthX * 10 + 5  // +5 to be above ground tile
     building.setDepth(depth)
     
-    // Store reference but don't add to container
-    tileData.occupied = true
-    tileData.building = building
+    // Mark all covered tiles as occupied
+    for (let dy = 0; dy < buildingSize.height; dy++) {
+      for (let dx = 0; dx < buildingSize.width; dx++) {
+        const occupyY = gridY + dy
+        const occupyX = gridX + dx
+        this.tiles[occupyY][occupyX].occupied = true
+        // Store building reference in primary tile only
+        if (dx === 0 && dy === 0) {
+          this.tiles[occupyY][occupyX].building = building
+        }
+      }
+    }
+    
     this.buildings.push(building)
   }
+  
+  private placeRoad(tileData: TileData) {
+    if (!this.selectedBuilding || !this.gridContainer) return
+    
+    const gridX = tileData.x
+    const gridY = tileData.y
+    
+    // Check if there's a building on this tile - if so, can't place road
+    if (tileData.occupied) {
+      console.log('Cannot place road - tile has a building')
+      return
+    }
+    
+    // Check if already has a road
+    if (tileData.groundType !== 'grass') {
+      console.log('Already has a road')
+      return
+    }
+    
+    // Simply change the texture of the existing tile
+    const tile = tileData.tile
+    tile.setTexture(this.selectedBuilding)
+    
+    // Keep the same depth as before (no need to change depth when changing texture)
+    // Depth is already set correctly based on grid position
+    
+    // Update tile data to track ground type
+    this.tiles[gridY][gridX].groundType = this.selectedBuilding
+    
+    // Roads don't occupy the tile for buildings
+  }
 
+  private getBuildingSize(buildingKey: string): BuildingSize {
+    // Default size for roads and other tiles
+    let size: BuildingSize = { width: 1, height: 1 }
+    
+    // Parse apartment sizes from key
+    if (buildingKey.includes('apartment')) {
+      if (buildingKey.includes('1x2')) {
+        size = { width: 1, height: 2 }
+      } else if (buildingKey.includes('2x1')) {
+        size = { width: 2, height: 1 }
+      } else if (buildingKey.includes('2x2')) {
+        size = { width: 2, height: 2 }
+      }
+      // 1x1 is already default
+    }
+    
+    return size
+  }
+  
+  private canPlaceBuilding(gridX: number, gridY: number, size: BuildingSize): boolean {
+    // Check if all required tiles are available
+    for (let dy = 0; dy < size.height; dy++) {
+      for (let dx = 0; dx < size.width; dx++) {
+        const checkY = gridY + dy
+        const checkX = gridX + dx
+        
+        // Check bounds
+        if (checkX < 0 || checkX >= this.gridSize || 
+            checkY < 0 || checkY >= this.gridSize) {
+          return false
+        }
+        
+        // Check if tile is occupied
+        if (this.tiles[checkY][checkX].occupied) {
+          return false
+        }
+      }
+    }
+    
+    return true
+  }
+  
   private selectBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
   }
