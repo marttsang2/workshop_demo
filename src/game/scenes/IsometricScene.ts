@@ -37,6 +37,7 @@ export default class IsometricScene extends Phaser.Scene {
   private dragStartY = 0
   private containerStartX = 0
   private containerStartY = 0
+  private dialogOpen = false
 
   constructor() {
     super({ key: 'IsometricScene' })
@@ -47,7 +48,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Load apartments
     const apartmentTypes = ['Blue', 'Green', 'Grey', 'Pink', 'Red', 'Yellow']
-    const sizes = ['1x1', '1x2', '2x2']
+    const sizes = ['1x1', '2x2']  // Removed 1x2 and 2x1
     const levels = ['Level1', 'Level2', 'Level3']
     
     apartmentTypes.forEach(color => {
@@ -69,6 +70,11 @@ export default class IsometricScene extends Phaser.Scene {
     for (let i = 1; i <= 9; i++) {
       this.load.image(`grass_road_${i}`, `GiantCityBuilder/Tiles/GrassRoad_Tile${i}.png`)
     }
+    
+    // Load signature buildings (all 2x2) from public folder
+    this.load.image('signature_hospital', 'GiantCityBuilder/Public/Doctor_Hospital.png')
+    this.load.image('signature_university', 'GiantCityBuilder/Public/Education_University.png')
+    this.load.image('signature_cinema', 'GiantCityBuilder/Public/Leasure_Cinema.png')
   }
 
   create() {
@@ -90,6 +96,7 @@ export default class IsometricScene extends Phaser.Scene {
     this.scale.on('resize', this.resize, this)
     this.resize()
   }
+  
 
   private resize() {
     const width = this.scale.width
@@ -120,13 +127,14 @@ export default class IsometricScene extends Phaser.Scene {
     // Create category buttons
     const categories = [
       { category: 'apartments', icon: '🏠', color: 0x3498db },
+      { category: 'signature', icon: '🏛️', color: 0x9b59b6 },
       { category: 'roads', icon: '🛤️', color: 0x95a5a6 },
       { category: 'delete', icon: '❌', color: 0xe74c3c },
       { category: 'world', icon: '🌐', color: 0xf39c12 }
     ]
     
     categories.forEach((cat, index) => {
-      const x = (index - 1.5) * 70 - 250
+      const x = (index - 2.5) * 70 - 250  // Adjusted for 6 categories
       
       // Category button
       const button = this.add.rectangle(x, 0, 55, 55, cat.color, 0.9)
@@ -191,6 +199,9 @@ export default class IsometricScene extends Phaser.Scene {
     const width = this.scale.width
     const height = this.scale.height
     
+    // Set dialog open flag
+    this.dialogOpen = true
+    
     // Create fullscreen overlay
     const overlay = this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.7)
     overlay.setInteractive() // Block clicks underneath
@@ -212,8 +223,11 @@ export default class IsometricScene extends Phaser.Scene {
     dialogContainer.add(titleBar)
     
     // Title text
-    const titleText = this.add.text(0, -dialogHeight/2 + 30, 
-      category === 'apartments' ? '🏠 Select Apartment' : '🛤️ Select Road', {
+    let titleString = '🏠 Select Apartment'
+    if (category === 'roads') titleString = '🛤️ Select Road'
+    if (category === 'signature') titleString = '🏛️ Select Signature Building'
+    
+    const titleText = this.add.text(0, -dialogHeight/2 + 30, titleString, {
       fontSize: '24px',
       color: '#ffffff',
       fontStyle: 'bold'
@@ -244,7 +258,6 @@ export default class IsometricScene extends Phaser.Scene {
       const colors = ['Blue', 'Green', 'Red', 'Yellow', 'Pink', 'Grey']
       const sizes = [
         { size: '1x1', level: 'Level1', label: 'Small' },
-        { size: '1x2', level: 'Level1', label: 'Medium' },
         { size: '2x2', level: 'Level1', label: 'Large' }
       ]
       
@@ -270,10 +283,8 @@ export default class IsometricScene extends Phaser.Scene {
             
             // Scale based on building size to fit in box
             let scale = 0.12 // Default for 1x1
-            if (sizeInfo.size === '1x2') {
-              scale = 0.08 // Smaller for medium buildings
-            } else if (sizeInfo.size === '2x2') {
-              scale = 0.06 // Even smaller for large buildings
+            if (sizeInfo.size === '2x2') {
+              scale = 0.06 // Smaller for large buildings
             }
             img.setScale(scale)
             dialogContainer.add(img)
@@ -299,11 +310,71 @@ export default class IsometricScene extends Phaser.Scene {
             
             itemBg.on('pointerdown', () => {
               this.selectBuilding(key)
+              this.dialogOpen = false
               overlay.destroy()
               dialogContainer.destroy(true)
             })
           }
           itemIndex++
+        })
+      })
+    } else if (category === 'signature') {
+      const signatures = [
+        { key: 'signature_hospital', name: '🏥 Hospital', description: 'Medical Center' },
+        { key: 'signature_university', name: '🎓 University', description: 'Education' },
+        { key: 'signature_cinema', name: '🎬 Cinema', description: 'Entertainment' }
+      ]
+      
+      signatures.forEach((building, index) => {
+        const row = Math.floor(index / gridCols)
+        const col = index % gridCols
+        
+        const x = (col - gridCols/2 + 0.5) * (itemSize + spacing)
+        const y = contentY + row * (itemSize + spacing) + 50
+        
+        // Item background
+        const itemBg = this.add.rectangle(x, y, itemSize, itemSize, 0x465669, 1)
+        itemBg.setStrokeStyle(2, 0x667788, 0.5)
+        itemBg.setInteractive({ useHandCursor: true })
+        dialogContainer.add(itemBg)
+        
+        // Building image
+        const img = this.add.image(x, y - 10, building.key)
+        img.setScale(0.06) // Small scale for 2x2 buildings
+        dialogContainer.add(img)
+        
+        // Label with emoji
+        const label = this.add.text(x, y + 35, building.name, {
+          fontSize: '11px',
+          color: '#ffffff',
+          align: 'center'
+        }).setOrigin(0.5)
+        dialogContainer.add(label)
+        
+        // Description
+        const desc = this.add.text(x, y + 48, building.description, {
+          fontSize: '9px',
+          color: '#aaaaaa',
+          align: 'center'
+        }).setOrigin(0.5)
+        dialogContainer.add(desc)
+        
+        // Interactions
+        itemBg.on('pointerover', () => {
+          itemBg.setFillStyle(0x556983)
+          img.setScale(0.065) // Slightly larger on hover
+        })
+        
+        itemBg.on('pointerout', () => {
+          itemBg.setFillStyle(0x465669)
+          img.setScale(0.06) // Back to original
+        })
+        
+        itemBg.on('pointerdown', () => {
+          this.selectBuilding(building.key)
+          this.dialogOpen = false
+          overlay.destroy()
+          dialogContainer.destroy(true)
         })
       })
     } else if (category === 'roads') {
@@ -358,6 +429,7 @@ export default class IsometricScene extends Phaser.Scene {
         
         itemBg.on('pointerdown', () => {
           this.selectBuilding(road.key)
+          this.dialogOpen = false
           overlay.destroy()
           dialogContainer.destroy(true)
         })
@@ -378,6 +450,7 @@ export default class IsometricScene extends Phaser.Scene {
     })
     
     closeBtn.on('pointerdown', () => {
+      this.dialogOpen = false
       overlay.destroy()
       dialogContainer.destroy(true)
     })
@@ -450,6 +523,9 @@ export default class IsometricScene extends Phaser.Scene {
       // Don't start drag if clicking on UI
       if (pointer.y > this.scale.height - 140) return
       
+      // Don't handle input if a dialog is open
+      if (this.dialogOpen) return
+      
       pointerDownTime = Date.now()
       hasDraggedEnough = false
       this.dragStartX = pointer.x
@@ -461,6 +537,9 @@ export default class IsometricScene extends Phaser.Scene {
     })
     
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      // Don't handle input if a dialog is open
+      if (this.dialogOpen) return
+      
       // Check if we've moved enough to consider it a drag
       const dx = pointer.x - this.dragStartX
       const dy = pointer.y - this.dragStartY
@@ -490,36 +569,48 @@ export default class IsometricScene extends Phaser.Scene {
         
         this.highlightGraphics.clear()
         
-        if (tile && this.selectedBuilding) {
-          const isRoad = this.selectedBuilding.includes('road_') || this.selectedBuilding.includes('grass_road_')
+        if (tile) {
+          // Delete mode highlighting
+          if (this.currentCategory === 'delete') {
+            if (tile.occupied && tile.building) {
+              // Show red highlight for deletable buildings
+              this.highlightGraphics.lineStyle(3, 0xff0000, 1)
+              const tileSprite = tile.tile
+              const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
+              const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
+              this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
+            }
+          } else if (this.selectedBuilding) {
+            const isGroundTile = this.selectedBuilding.includes('road_') || this.selectedBuilding.includes('grass_road_')
           
-          if (isRoad) {
-            // Roads always show green highlight (they replace ground)
-            this.highlightGraphics.lineStyle(3, 0x00ff00, 1)
-            const tileSprite = tile.tile
-            const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
-            const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
-            this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
-          } else {
-            // Buildings need to check for space
-            const buildingSize = this.getBuildingSize(this.selectedBuilding)
-            const canPlace = this.canPlaceBuilding(tile.x, tile.y, buildingSize)
-            
-            // Set color based on whether we can place
-            this.highlightGraphics.lineStyle(3, canPlace ? 0x00ff00 : 0xff0000, 1)
-            
-            // Draw highlight for all tiles the building will occupy
-            for (let dy = 0; dy < buildingSize.height; dy++) {
-              for (let dx = 0; dx < buildingSize.width; dx++) {
-                const highlightY = tile.y + dy
-                const highlightX = tile.x + dx
-                
-                if (highlightX < this.gridSize && highlightY < this.gridSize) {
-                  const highlightTile = this.tiles[highlightY][highlightX].tile
-                  const worldX = this.gridContainer.x + highlightTile.x * this.gridContainer.scale
-                  const worldY = this.gridContainer.y + highlightTile.y * this.gridContainer.scale
+            if (isGroundTile) {
+              // Ground tiles always show green highlight (they replace grass)
+              this.highlightGraphics.lineStyle(3, 0x00ff00, 1)
+              const tileSprite = tile.tile
+              const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
+              const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
+              this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
+            } else {
+              // Buildings need to check for space
+              const buildingSize = this.getBuildingSize(this.selectedBuilding)
+              const canPlace = this.canPlaceBuilding(tile.x, tile.y, buildingSize)
+              
+              // Set color based on whether we can place
+              this.highlightGraphics.lineStyle(3, canPlace ? 0x00ff00 : 0xff0000, 1)
+              
+              // Draw highlight for all tiles the building will occupy
+              for (let dy = 0; dy < buildingSize.height; dy++) {
+                for (let dx = 0; dx < buildingSize.width; dx++) {
+                  const highlightY = tile.y + dy
+                  const highlightX = tile.x + dx
                   
-                  this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
+                  if (highlightX < this.gridSize && highlightY < this.gridSize) {
+                    const highlightTile = this.tiles[highlightY][highlightX].tile
+                    const worldX = this.gridContainer.x + highlightTile.x * this.gridContainer.scale
+                    const worldY = this.gridContainer.y + highlightTile.y * this.gridContainer.scale
+                    
+                    this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
+                  }
                 }
               }
             }
@@ -529,6 +620,9 @@ export default class IsometricScene extends Phaser.Scene {
     })
     
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      // Don't handle input if a dialog is open
+      if (this.dialogOpen) return
+      
       // Place building if it was a click (not a drag)
       if (!hasDraggedEnough && this.gridContainer) {
         // Convert pointer position to local container space, accounting for scale
@@ -537,8 +631,13 @@ export default class IsometricScene extends Phaser.Scene {
         
         const tile = this.getTileAtPosition(localX, localY)
         
-        if (tile && this.selectedBuilding && !tile.occupied) {
-          this.placeBuilding(tile)
+        if (tile) {
+          // Check if we're in delete mode
+          if (this.currentCategory === 'delete' && tile.occupied && tile.building) {
+            this.deleteBuilding(tile)
+          } else if (this.selectedBuilding && !tile.occupied) {
+            this.placeBuilding(tile)
+          }
         }
       }
       
@@ -549,6 +648,9 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Mouse wheel zoom
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: any[], _deltaX: number, deltaY: number) => {
+      // Don't handle input if a dialog is open
+      if (this.dialogOpen) return
+      
       if (this.gridContainer) {
         const zoom = this.gridContainer.scale
         const newZoom = Phaser.Math.Clamp(zoom - deltaY * 0.001, 0.5, 2)
@@ -622,12 +724,14 @@ export default class IsometricScene extends Phaser.Scene {
     const gridX = tileData.x
     const gridY = tileData.y
     
-    // Check if this is a road tile
-    const isRoad = this.selectedBuilding.includes('road_') || this.selectedBuilding.includes('grass_road_')
+    // Check if this is a ground tile (road or sidewalk)
+    const isGroundTile = this.selectedBuilding.includes('road_') || 
+                         this.selectedBuilding.includes('grass_road_') ||
+                         this.selectedBuilding.includes('sidewalk_')
     
-    if (isRoad) {
-      // Roads replace the ground tile
-      this.placeRoad(tileData)
+    if (isGroundTile) {
+      // Ground tiles replace the grass tile
+      this.placeGroundTile(tileData)
       return
     }
     
@@ -701,7 +805,7 @@ export default class IsometricScene extends Phaser.Scene {
     this.buildings.push(building)
   }
   
-  private placeRoad(tileData: TileData) {
+  private placeGroundTile(tileData: TileData) {
     if (!this.selectedBuilding || !this.gridContainer) return
     
     const gridX = tileData.x
@@ -709,13 +813,13 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Check if there's a building on this tile - if so, can't place road
     if (tileData.occupied) {
-      console.log('Cannot place road - tile has a building')
+      console.log('Cannot place ground tile - tile has a building')
       return
     }
     
-    // Check if already has a road
-    if (tileData.groundType !== 'grass') {
-      console.log('Already has a road')
+    // Check if already has the same ground type
+    if (tileData.groundType === this.selectedBuilding) {
+      console.log('Already has this ground type')
       return
     }
     
@@ -736,16 +840,15 @@ export default class IsometricScene extends Phaser.Scene {
     // Default size for roads and other tiles
     let size: BuildingSize = { width: 1, height: 1 }
     
-    // Parse apartment sizes from key
+    // Parse building sizes from key
     if (buildingKey.includes('apartment')) {
-      if (buildingKey.includes('1x2')) {
-        size = { width: 1, height: 2 }
-      } else if (buildingKey.includes('2x1')) {
-        size = { width: 2, height: 1 }
-      } else if (buildingKey.includes('2x2')) {
+      if (buildingKey.includes('2x2')) {
         size = { width: 2, height: 2 }
       }
       // 1x1 is already default
+    } else if (buildingKey.includes('signature_')) {
+      // All signature buildings are 2x2
+      size = { width: 2, height: 2 }
     }
     
     return size
@@ -780,5 +883,57 @@ export default class IsometricScene extends Phaser.Scene {
 
   public setSelectedBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
+  }
+  
+  private deleteBuilding(tileData: TileData) {
+    if (!tileData.building) return
+    
+    const building = tileData.building
+    const buildingKey = building.texture.key
+    const buildingSize = this.getBuildingSize(buildingKey)
+    
+    // Find the origin tile of the building (top-left corner)
+    let originX = tileData.x
+    let originY = tileData.y
+    
+    // Search for the actual origin tile (where the building reference is stored)
+    searchLoop: for (let dy = 0; dy < buildingSize.height; dy++) {
+      for (let dx = 0; dx < buildingSize.width; dx++) {
+        const checkY = tileData.y - dy
+        const checkX = tileData.x - dx
+        
+        if (checkY >= 0 && checkX >= 0 && 
+            checkY < this.gridSize && checkX < this.gridSize) {
+          const checkTile = this.tiles[checkY][checkX]
+          if (checkTile.building === building) {
+            originX = checkX
+            originY = checkY
+            break searchLoop
+          }
+        }
+      }
+    }
+    
+    // Free all tiles occupied by the building
+    for (let dy = 0; dy < buildingSize.height; dy++) {
+      for (let dx = 0; dx < buildingSize.width; dx++) {
+        const freeY = originY + dy
+        const freeX = originX + dx
+        
+        if (freeX < this.gridSize && freeY < this.gridSize) {
+          this.tiles[freeY][freeX].occupied = false
+          this.tiles[freeY][freeX].building = undefined
+        }
+      }
+    }
+    
+    // Remove building from buildings array
+    const index = this.buildings.indexOf(building)
+    if (index > -1) {
+      this.buildings.splice(index, 1)
+    }
+    
+    // Destroy the building sprite
+    building.destroy()
   }
 }
