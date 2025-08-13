@@ -889,7 +889,7 @@ export default class IsometricScene extends Phaser.Scene {
         this.buildingPreview.setVisible(true)
       }
 
-      // Handle tile highlighting
+      // Handle tile highlighting: only show when placing a building
       if (!this.isDragging && this.gridContainer && this.highlightGraphics) {
         // Convert pointer position to local container space, accounting for scale
         const localX = (pointer.x - this.gridContainer.x) / this.gridContainer.scale
@@ -899,53 +899,39 @@ export default class IsometricScene extends Phaser.Scene {
         
         this.highlightGraphics.clear()
         
-        if (tile) {
-          // Delete mode highlighting
-          if (this.currentCategory === 'delete') {
-            if (tile.occupied && tile.building) {
-              // Show red highlight for deletable buildings
-              this.highlightGraphics.lineStyle(3, 0xff0000, 1)
-              const tileSprite = tile.tile
-              const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
-              const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
-              this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
-            }
-          } else if (this.selectedBuilding) {
-            const isGroundTile = this.selectedBuilding.includes('road_') || this.selectedBuilding.includes('grass_road_')
+        if (tile && this.selectedBuilding) {
+          const isGroundTile = this.selectedBuilding.includes('road_') || this.selectedBuilding.includes('grass_road_')
           
-            if (isGroundTile) {
-              // Ground tiles always show green highlight (they replace grass)
-              this.highlightGraphics.lineStyle(3, 0x00ff00, 1)
-              const tileSprite = tile.tile
-              const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
-              const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
-              this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
-            } else {
-              // Buildings need to check for space
-              const buildingSize = this.getBuildingSize(this.selectedBuilding)
-              const canPlace = this.canPlaceBuilding(tile.x, tile.y, buildingSize)
-              
-              // Set color based on whether we can place
-              this.highlightGraphics.lineStyle(3, canPlace ? 0x00ff00 : 0xff0000, 1)
-              
-              // Draw highlight for all tiles the building will occupy
-              for (let dy = 0; dy < buildingSize.height; dy++) {
-                for (let dx = 0; dx < buildingSize.width; dx++) {
-                  const highlightY = tile.y + dy
-                  const highlightX = tile.x + dx
-                  
-                  if (highlightX < this.gridSize && highlightY < this.gridSize) {
-                    const highlightTile = this.tiles[highlightY][highlightX].tile
-                    const worldX = this.gridContainer.x + highlightTile.x * this.gridContainer.scale
-                    const worldY = this.gridContainer.y + highlightTile.y * this.gridContainer.scale
-                    
-                    this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
-                  }
+          if (isGroundTile) {
+            // Ground tiles: green highlight on the hovered tile
+            this.highlightGraphics.lineStyle(3, 0x00ff00, 1)
+            const tileSprite = tile.tile
+            const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
+            const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
+            this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
+          } else {
+            // Buildings: highlight area based on size and placement validity
+            const buildingSize = this.getBuildingSize(this.selectedBuilding)
+            const canPlace = this.canPlaceBuilding(tile.x, tile.y, buildingSize)
+            this.highlightGraphics.lineStyle(3, canPlace ? 0x00ff00 : 0xff0000, 1)
+            
+            for (let dy = 0; dy < buildingSize.height; dy++) {
+              for (let dx = 0; dx < buildingSize.width; dx++) {
+                const highlightY = tile.y + dy
+                const highlightX = tile.x + dx
+                
+                if (highlightX < this.gridSize && highlightY < this.gridSize) {
+                  const highlightTile = this.tiles[highlightY][highlightX].tile
+                  const worldX = this.gridContainer.x + highlightTile.x * this.gridContainer.scale
+                  const worldY = this.gridContainer.y + highlightTile.y * this.gridContainer.scale
+                  this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
                 }
               }
             }
           }
         }
+        
+        return
       }
     })
     
@@ -1181,8 +1167,10 @@ export default class IsometricScene extends Phaser.Scene {
     
     this.buildings.push(building)
     
-    // Clear the building preview after successful placement
+    // Cancel placement after a single successful placement
+    this.selectedBuilding = null
     this.clearBuildingPreview()
+    if (this.highlightGraphics) this.highlightGraphics.clear()
   }
 
   private resortGridChildrenByDepth() {
@@ -1231,8 +1219,10 @@ export default class IsometricScene extends Phaser.Scene {
     // Update road NPC path whenever roads change
     this.updateRoadNpcPath()
     
-    // Clear the building preview after successful placement
+    // Cancel placement after a single successful placement
+    this.selectedBuilding = null
     this.clearBuildingPreview()
+    if (this.highlightGraphics) this.highlightGraphics.clear()
   }
 
   private getBuildingSize(buildingKey: string): BuildingSize {
