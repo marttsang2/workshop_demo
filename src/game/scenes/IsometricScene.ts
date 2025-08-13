@@ -689,6 +689,8 @@ export default class IsometricScene extends Phaser.Scene {
       this.isDragging = false
       hasDraggedEnough = false
       pointerDownTime = 0
+      // Restore correct draw order in case any interaction changed child order
+      this.resortGridChildrenByDepth()
     })
     
     // Mouse wheel zoom
@@ -704,6 +706,11 @@ export default class IsometricScene extends Phaser.Scene {
         // Update building positions and scales when zooming
         this.updateBuildingPositions()
       }
+    })
+
+    // Ensure any game object interactions don't leave incorrect draw order
+    this.input.on('gameobjectdown', () => {
+      this.resortGridChildrenByDepth()
     })
   }
   
@@ -853,17 +860,14 @@ export default class IsometricScene extends Phaser.Scene {
   private resortGridChildrenByDepth() {
     if (!this.gridContainer) return
     const children = this.gridContainer.list as Phaser.GameObjects.GameObject[]
-    const sorted = [...children].sort((a, b) => {
-      const ad = (a as any).getData ? (a as any).getData('gridDepth') ?? 0 : 0
-      const bd = (b as any).getData ? (b as any).getData('gridDepth') ?? 0 : 0
-      return ad - bd
-    })
-    // Bring each child to top in ascending order to match sorted order
-    sorted.forEach(child => {
-      // @ts-expect-error Phaser typing
-      if ((this.gridContainer as any).bringToTop) {
-        ;(this.gridContainer as any).bringToTop(child)
-      }
+    const getGridDepth = (obj: Phaser.GameObjects.GameObject): number => {
+      const dm = (obj as unknown as { data?: Phaser.Data.DataManager }).data
+      const val = dm?.get('gridDepth')
+      return typeof val === 'number' ? val : 0
+    }
+    const sorted = [...children].sort((a, b) => getGridDepth(a) - getGridDepth(b))
+    sorted.forEach((child, index) => {
+      this.gridContainer!.moveTo(child, index)
     })
   }
   
