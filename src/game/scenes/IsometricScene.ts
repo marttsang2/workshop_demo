@@ -500,10 +500,9 @@ export default class IsometricScene extends Phaser.Scene {
         const tileScale = this.tileWidth / tile.width
         tile.setScale(tileScale)
         
-        // Depth calculation for isometric view
-        // Use the isometric screen Y position for proper depth sorting
-        // Objects that appear lower on screen should have higher depth
-        const depth = Math.floor(isoY * 100 + isoX * 0.1)
+        // Stable depth calculation based on grid coordinates
+        // Ensures consistent ordering independent of interaction/click order
+        const depth = (row + col) * 1000 + col
         tile.setDepth(depth)
         
         tile.setInteractive()
@@ -514,6 +513,8 @@ export default class IsometricScene extends Phaser.Scene {
         this.gridContainer?.add(tile)
       }
     }
+    // Ensure children in the container are ordered by their depth
+    this.resortGridChildrenByDepth()
   }
 
   private setupInteraction() {
@@ -824,15 +825,12 @@ export default class IsometricScene extends Phaser.Scene {
     const baseY = gridY + buildingSize.height - 1  // Bottom row of building  
     const baseX = gridX + buildingSize.width - 1   // Right column of building
     
-    // Convert grid coordinates to isometric screen position
-    // This matches the tile positioning formula
-    const isoX = (baseX - baseY) * (this.tileWidth / 2)
-    const isoY = (baseX + baseY) * (this.tileHeight / 2)
-    
-    // Depth based on screen Y position - objects lower on screen have higher depth
-    // Add X component for tie-breaking when objects are on same row
-    const depth = Math.floor(isoY * 100 + isoX * 0.1) + 100
+    // Stable depth based on grid coordinates (independent of click order)
+    // Offset by +100 so buildings render above ground tiles at same grid location
+    const depth = (baseX + baseY) * 1000 + baseX + 100
     building.setDepth(depth)
+    // Reorder container children to respect updated depths
+    this.resortGridChildrenByDepth()
     
     // Mark all covered tiles as occupied
     for (let dy = 0; dy < buildingSize.height; dy++) {
@@ -848,6 +846,12 @@ export default class IsometricScene extends Phaser.Scene {
     }
     
     this.buildings.push(building)
+  }
+
+  private resortGridChildrenByDepth() {
+    if (!this.gridContainer) return
+    const children = this.gridContainer.list as Phaser.GameObjects.GameObject[]
+    children.sort((a, b) => a.depth - b.depth)
   }
   
   private placeGroundTile(tileData: TileData) {
