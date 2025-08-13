@@ -21,7 +21,7 @@ interface CategoryButton {
 }
 
 export default class IsometricScene extends Phaser.Scene {
-  private gridSize = 7
+  private gridSize = 8
   private tileWidth = 130
   private tileHeight = 80
   private tiles: TileData[][] = []
@@ -80,7 +80,10 @@ export default class IsometricScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBackgroundColor('#5DADE2')
     
-    this.gridContainer = this.add.container(0, 0)
+    // Create and position container FIRST
+    const centerX = this.cameras.main.width / 2
+    const centerY = this.cameras.main.height / 2
+    this.gridContainer = this.add.container(centerX, centerY)
     this.highlightGraphics = this.add.graphics()
     
     this.initializeGrid()
@@ -88,9 +91,9 @@ export default class IsometricScene extends Phaser.Scene {
     this.setupInteraction()
     this.createUI()
     
-    const centerX = this.cameras.main.width / 2
-    const centerY = this.cameras.main.height / 2 - 50
-    this.gridContainer.setPosition(centerX, centerY)
+    // Initialize with University in center and roads around it
+    // This must happen AFTER container is positioned
+    this.initializeStartingBuildings()
     
     // Handle window resize
     this.scale.on('resize', this.resize, this)
@@ -109,7 +112,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Center grid if not being dragged
     if (!this.isDragging && this.gridContainer) {
-      this.gridContainer.setPosition(width / 2, height / 2 - 50)
+      this.gridContainer.setPosition(width / 2, height / 2)
     }
   }
 
@@ -498,9 +501,9 @@ export default class IsometricScene extends Phaser.Scene {
         tile.setScale(tileScale)
         
         // Depth calculation for isometric view
-        // Objects further down and to the right should appear on top
-        // Use row as primary sort, column as secondary
-        const depth = row * 1000 + col * 8
+        // Use the isometric screen Y position for proper depth sorting
+        // Objects that appear lower on screen should have higher depth
+        const depth = Math.floor(isoY * 100 + isoX * 0.1)
         tile.setDepth(depth)
         
         tile.setInteractive()
@@ -632,9 +635,49 @@ export default class IsometricScene extends Phaser.Scene {
         const tile = this.getTileAtPosition(localX, localY)
         
         if (tile) {
+          // Check if clicking on a building (including multi-tile buildings)
+          let clickedBuilding = tile.building
+          
+          // If tile is occupied but no building reference, check nearby tiles for 2x2 buildings
+          if (tile.occupied && !clickedBuilding) {
+            // Check all possible positions where this could be part of a 2x2 building
+            for (let dy = 0; dy <= 1; dy++) {
+              for (let dx = 0; dx <= 1; dx++) {
+                const checkY = tile.y - dy
+                const checkX = tile.x - dx
+                if (checkY >= 0 && checkX >= 0 && 
+                    checkY < this.gridSize && checkX < this.gridSize) {
+                  const checkTile = this.tiles[checkY][checkX]
+                  if (checkTile.building) {
+                    // Verify this building actually covers the clicked tile
+                    const buildingSize = this.getBuildingSize(checkTile.building.texture.key)
+                    if (checkX + buildingSize.width > tile.x && 
+                        checkY + buildingSize.height > tile.y) {
+                      clickedBuilding = checkTile.building
+                      break
+                    }
+                  }
+                }
+              }
+              if (clickedBuilding) break
+            }
+          }
+          
+          // Check if clicking on University building
+          if (clickedBuilding && clickedBuilding.texture.key === 'signature_university') {
+            this.showWorkshopPopup()
+          } 
           // Check if we're in delete mode
-          if (this.currentCategory === 'delete' && tile.occupied && tile.building) {
-            this.deleteBuilding(tile)
+          else if (this.currentCategory === 'delete' && clickedBuilding) {
+            // Find the origin tile for proper deletion
+            for (let row = 0; row < this.gridSize; row++) {
+              for (let col = 0; col < this.gridSize; col++) {
+                if (this.tiles[row][col].building === clickedBuilding) {
+                  this.deleteBuilding(this.tiles[row][col])
+                  break
+                }
+              }
+            }
           } else if (this.selectedBuilding && !tile.occupied) {
             this.placeBuilding(tile)
           }
@@ -663,23 +706,8 @@ export default class IsometricScene extends Phaser.Scene {
   }
   
   private updateBuildingPositions() {
-    if (!this.gridContainer) return
-    
-    // Update all buildings based on their stored local positions
-    this.buildings.forEach(building => {
-      const localX = building.getData('localX')
-      const localY = building.getData('localY')
-      
-      if (localX !== undefined && localY !== undefined) {
-        // Update building position based on container position and scale
-        building.x = this.gridContainer!.x + localX * this.gridContainer!.scale
-        building.y = this.gridContainer!.y + localY * this.gridContainer!.scale
-        
-        // Update building scale
-        const originalScale = this.tileWidth / 512 // Assuming 512 is the original tile image width
-        building.setScale(originalScale * this.gridContainer!.scale)
-      }
-    })
+    // Buildings are now in the container, so they scale and move automatically
+    // No need to manually update their positions or scales
   }
 
   private drawTileHighlight(x: number, y: number, scale: number = 1) {
@@ -771,28 +799,39 @@ export default class IsometricScene extends Phaser.Scene {
       localY -= 8
     }
 
-    // Calculate world position
-    const worldX = this.gridContainer.x + localX * this.gridContainer.scale
-    const worldY = this.gridContainer.y + localY * this.gridContainer.scale
-    
-    const building = this.add.image(worldX, worldY, this.selectedBuilding)
+    // Create building at local coordinates (relative to container)
+    const building = this.add.image(localX, localY, this.selectedBuilding)
     building.setOrigin(0.5, 0.65)
     
-    // Store local position for updates
+    // Add building to the container so it moves with the grid
+    this.gridContainer.add(building)
+    
+    // Store local position for reference
     building.setData('localX', localX)
     building.setData('localY', localY)
     
-    // Scale building to match tile size and container scale
+    // Scale building to match tile size
     const baseTile = this.tiles[gridY][gridX].tile
-    const tileScale = baseTile.scaleX * this.gridContainer.scale
+    const tileScale = baseTile.scaleX
     building.setScale(tileScale)
     
     // Calculate depth for isometric view
-    // For multi-tile buildings, use the furthest point (bottom-right) for depth
-    // This ensures proper sorting with other objects
-    const depthY = gridY + buildingSize.height - 1  // Bottom row of building
-    const depthX = gridX + buildingSize.width - 1   // Right column of building
-    const depth = depthY * 1000 + depthX * 10 + 5  // +5 to be above ground tile
+    // For proper isometric sorting, we need to use the screen Y position
+    // Buildings that appear lower on screen (higher Y in screen coordinates) should have higher depth
+    // We use the isometric formula to calculate the screen position, then use that for depth
+    
+    // Calculate the screen position of the building's base (bottom tile)
+    const baseY = gridY + buildingSize.height - 1  // Bottom row of building  
+    const baseX = gridX + buildingSize.width - 1   // Right column of building
+    
+    // Convert grid coordinates to isometric screen position
+    // This matches the tile positioning formula
+    const isoX = (baseX - baseY) * (this.tileWidth / 2)
+    const isoY = (baseX + baseY) * (this.tileHeight / 2)
+    
+    // Depth based on screen Y position - objects lower on screen have higher depth
+    // Add X component for tie-breaking when objects are on same row
+    const depth = Math.floor(isoY * 100 + isoX * 0.1) + 100
     building.setDepth(depth)
     
     // Mark all covered tiles as occupied
@@ -889,6 +928,334 @@ export default class IsometricScene extends Phaser.Scene {
 
   public setSelectedBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
+  }
+  
+  private initializeStartingBuildings() {
+    // Place University in the center of the grid (3,3 for 8x8 grid, as it's 2x2)
+    const centerRow = 3
+    const centerCol = 3
+    
+    // Place the University building
+    this.selectedBuilding = 'signature_university'
+    const centerTile = this.tiles[centerRow][centerCol]
+    this.placeBuilding(centerTile)
+    
+    // Add bouncing animation to the University building
+    const universityBuilding = this.buildings[this.buildings.length - 1]
+    if (universityBuilding) {
+      const baseY = universityBuilding.y
+      
+      // Create a bouncing tween animation
+      this.tweens.add({
+        targets: universityBuilding,
+        y: baseY - 8, // Bounce up by 8 pixels
+        duration: 1000, // 1 second up
+        ease: 'Sine.easeInOut',
+        yoyo: true, // Return to original position
+        repeat: -1 // Infinite repeat
+      })
+    }
+    
+    // Place roads around the University (forming a square)
+    // University occupies (3,3), (3,4), (4,3), (4,4)
+    // Roads should be at positions surrounding this 2x2 area
+    
+    // Road tile mapping based on Phaser road types:
+    // road_1: Straight horizontal (→)
+    // road_2: Straight vertical (↓)
+    // road_3: Turn bottom-right (↘)
+    // road_4: Turn bottom-left (↙)
+    // road_5: Turn top-right (↗)
+    // road_6: Turn top-left (↖)
+    // road_7: T-junction
+    // road_8: Cross/4-way
+    // road_9: End cap
+    
+    
+    // Clear selection after initialization
+    this.selectedBuilding = null
+  }
+  
+  private showWorkshopPopup() {
+    const width = this.scale.width
+    const height = this.scale.height
+    
+    // Set dialog open flag
+    this.dialogOpen = true
+    
+    // Create fullscreen overlay
+    const overlay = this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.7)
+    overlay.setInteractive() // Block clicks underneath
+    overlay.setDepth(20000)
+    
+    // Create dialog container
+    const dialogContainer = this.add.container(width/2, height/2)
+    dialogContainer.setDepth(20001)
+    
+    // Dialog background
+    const dialogWidth = 1100
+    const dialogHeight = 700
+    const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x1a1a2e, 1)
+    dialogBg.setStrokeStyle(3, 0x16213e, 0.8)
+    dialogContainer.add(dialogBg)
+    
+    // Title bar
+    const titleBar = this.add.rectangle(0, -dialogHeight/2 + 30, dialogWidth, 60, 0x0f3460, 1)
+    dialogContainer.add(titleBar)
+    
+    // Title text - optimized for performance
+    const titleText = this.add.text(0, -dialogHeight/2 + 30, '🎓 University Career Development Pathways', {
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      fontFamily: 'Arial, sans-serif'
+    }).setOrigin(0.5)
+    dialogContainer.add(titleText)
+    
+    // Close button
+    const closeBtn = this.add.rectangle(dialogWidth/2 - 30, -dialogHeight/2 + 30, 40, 40, 0xe94560, 1)
+    closeBtn.setInteractive({ useHandCursor: true })
+    closeBtn.setStrokeStyle(2, 0xffffff, 0.5)
+    dialogContainer.add(closeBtn)
+    
+    const closeText = this.add.text(dialogWidth/2 - 30, -dialogHeight/2 + 30, '✕', {
+      fontSize: '20px',
+      color: '#ffffff'
+    }).setOrigin(0.5)
+    dialogContainer.add(closeText)
+    
+    // Create viewport mask for scrollable area
+    const viewportWidth = dialogWidth - 60
+    const viewportHeight = dialogHeight - 120
+    const viewportY = 10
+    
+    // Create mask for viewport
+    const maskShape = this.make.graphics({})
+    maskShape.fillStyle(0xffffff)
+    maskShape.fillRect(
+      width/2 - viewportWidth/2,
+      height/2 - viewportHeight/2 + viewportY,
+      viewportWidth,
+      viewportHeight
+    )
+    
+    // Content area for workshops (draggable)
+    const contentContainer = this.add.container(0, viewportY)
+    contentContainer.setMask(maskShape.createGeometryMask())
+    dialogContainer.add(contentContainer)
+    
+    // Inner container for dragging
+    const workshopContainer = this.add.container(0, 0)
+    contentContainer.add(workshopContainer)
+    
+    // Workshop data - unified path with 3 starting points
+    const workshops = [
+      // Three starting points - Stream A, B, C
+      { id: 'A1', stream: 'A', title: 'Communication Skills', desc: 'Verbal & written mastery', level: 'Beginner', x: -450, y: -200, connections: ['COMMON'] },
+      { id: 'B1', stream: 'B', title: 'Emotional Intelligence', desc: 'Self & social awareness', level: 'Beginner', x: -450, y: 0, connections: ['COMMON'] },
+      { id: 'C1', stream: 'C', title: 'Critical Thinking', desc: 'Analytical skills', level: 'Beginner', x: -450, y: 200, connections: ['COMMON'] },
+      
+      // Common second workshop that all streams pass through
+      { id: 'COMMON', title: 'Leadership Foundations', desc: 'Core leadership principles', level: 'Intermediate', x: -200, y: 0, connections: ['A2', 'B2', 'C2'] },
+      
+      // Three different third workshops (streams diverge again)
+      { id: 'A2', stream: 'A', title: 'Public Speaking', desc: 'Presentation confidence', level: 'Intermediate', x: 50, y: -200, connections: ['F1', 'F2'] },
+      { id: 'B2', stream: 'B', title: 'Team Building', desc: 'Creating high-performing teams', level: 'Intermediate', x: 50, y: 0, connections: ['F2', 'F3'] },
+      { id: 'C2', stream: 'C', title: 'Strategic Planning', desc: 'Long-term vision', level: 'Intermediate', x: 50, y: 200, connections: ['F3', 'F4'] },
+      
+      // Advanced workshops (multiple paths converge)
+      { id: 'F1', title: 'Executive Communication', desc: 'C-suite messaging', level: 'Advanced', x: 300, y: -250, connections: ['E'] },
+      { id: 'F2', title: 'Change Management', desc: 'Leading transformation', level: 'Advanced', x: 300, y: -100, connections: ['E'] },
+      { id: 'F3', title: 'Innovation Leadership', desc: 'Driving creativity', level: 'Advanced', x: 300, y: 100, connections: ['E'] },
+      { id: 'F4', title: 'Business Strategy', desc: 'Market positioning', level: 'Advanced', x: 300, y: 250, connections: ['E'] },
+      
+      // Ultimate goal - all paths lead here
+      { id: 'E', title: 'Executive Leadership', desc: 'Complete leadership mastery', level: 'Master', x: 550, y: 0, connections: [] }
+    ]
+    
+    // Draw connection lines first (so they appear behind cards)
+    const lines = this.add.graphics()
+    lines.lineStyle(2, 0x533483, 0.4)
+    
+    // Create a map for quick workshop lookup by ID
+    const workshopMap = new Map()
+    workshops.forEach(w => workshopMap.set(w.id, w))
+    
+    // Draw connections
+    workshops.forEach(workshop => {
+      workshop.connections?.forEach(targetId => {
+        const target = workshopMap.get(targetId)
+        if (target) {
+          lines.beginPath()
+          lines.moveTo(workshop.x + 100, workshop.y)
+          
+          // Add simple angled connections
+          if (workshop.y !== target.y) {
+            const midX = (workshop.x + target.x) / 2
+            // Create angled line path
+            lines.lineTo(midX, workshop.y)
+            lines.lineTo(midX, target.y)
+            lines.lineTo(target.x - 100, target.y)
+          } else {
+            lines.lineTo(target.x - 100, target.y)
+          }
+          lines.strokePath()
+        }
+      })
+    })
+    
+    workshopContainer.add(lines)
+    
+    // Stream colors for visual distinction
+    const streamColors: { [key: string]: number } = {
+      'A': 0x3498db,  // Blue
+      'B': 0x2ecc71,  // Green  
+      'C': 0xe74c3c   // Red
+    }
+    
+    // Level indicator colors
+    const levelColors: { [key: string]: number } = {
+      'Beginner': 0x10b981,
+      'Intermediate': 0xf59e0b,
+      'Advanced': 0xef4444,
+      'Master': 0x9b59b6
+    }
+    
+    // Create workshop cards
+    workshops.forEach(workshop => {
+      const x = workshop.x
+      const y = workshop.y
+      
+      // Workshop card
+      const cardWidth = 180
+      const cardHeight = 80
+      const streamColor = workshop.stream ? streamColors[workshop.stream] : 0x7c3aed
+      const cardBg = this.add.rectangle(x, y, cardWidth, cardHeight, 0x16213e, 1)
+      
+      // Add stream-colored border for starting workshops
+      if (workshop.stream) {
+        cardBg.setStrokeStyle(3, streamColor, 0.8)
+      } else {
+        cardBg.setStrokeStyle(2, 0x533483, 0.5)
+      }
+      
+      cardBg.setInteractive({ useHandCursor: true })
+      workshopContainer.add(cardBg)
+      
+      // Stream indicator OUTSIDE the box for starting workshops
+      if (workshop.stream) {
+        // Create circular stream indicator above the card
+        const streamCircle = this.add.circle(x - cardWidth/2 - 20, y, 18, streamColor)
+        workshopContainer.add(streamCircle)
+        
+        const streamLabel = this.add.text(x - cardWidth/2 - 20, y, workshop.stream, {
+          fontSize: '16px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+          fontFamily: 'Arial, sans-serif'
+        }).setOrigin(0.5, 0.5)
+        workshopContainer.add(streamLabel)
+      }
+      
+      // Level indicator color bar on left side
+      const indicatorX = x - cardWidth/2 + 6
+      const levelIndicator = this.add.rectangle(indicatorX, y, 8, cardHeight - 10, levelColors[workshop.level], 1)
+      workshopContainer.add(levelIndicator)
+      
+      // Workshop title - optimized
+      const titleText = this.add.text(indicatorX + 15, y - 10, workshop.title, {
+        fontSize: '14px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+        fontFamily: 'Arial, sans-serif'
+      }).setOrigin(0, 0.5)
+      workshopContainer.add(titleText)
+      
+      // Workshop description - optimized
+      const descText = this.add.text(indicatorX + 15, y + 12, workshop.desc, {
+        fontSize: '11px',
+        color: '#9ca3af',
+        wordWrap: { width: cardWidth - 40 },
+        fontFamily: 'Arial, sans-serif'
+      }).setOrigin(0, 0.5)
+      workshopContainer.add(descText)
+      
+      // Hover effects
+      cardBg.on('pointerover', () => {
+        cardBg.setFillStyle(0x1e293b, 1)
+        cardBg.setScale(1.05)
+        titleText.setScale(1.05)
+        descText.setScale(1.05)
+      })
+      
+      cardBg.on('pointerout', () => {
+        cardBg.setFillStyle(0x16213e, 1)
+        cardBg.setScale(1)
+        titleText.setScale(1)
+        descText.setScale(1)
+      })
+    })
+    
+    // Implement drag-and-drop for the workshop container
+    let isDragging = false
+    let dragStartX = 0
+    let dragStartY = 0
+    let containerStartX = 0
+    let containerStartY = 0
+    
+    // Create invisible interaction area
+    const interactionArea = this.add.rectangle(0, viewportY, viewportWidth, viewportHeight, 0x000000, 0.01)
+    interactionArea.setInteractive()
+    dialogContainer.add(interactionArea)
+    
+    interactionArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      isDragging = true
+      dragStartX = pointer.x
+      dragStartY = pointer.y
+      containerStartX = workshopContainer.x
+      containerStartY = workshopContainer.y
+    })
+    
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (isDragging) {
+        const dx = pointer.x - dragStartX
+        const dy = pointer.y - dragStartY
+        
+        // Update container position with boundaries
+        workshopContainer.x = Phaser.Math.Clamp(containerStartX + dx, -800, 400)
+        workshopContainer.y = Phaser.Math.Clamp(containerStartY + dy, -400, 400)
+      }
+    })
+    
+    this.input.on('pointerup', () => {
+      isDragging = false
+    })
+    
+    // Mouse wheel zoom for workshop view
+    interactionArea.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: any[], _deltaX: number, deltaY: number) => {
+      const currentScale = workshopContainer.scale
+      const newScale = Phaser.Math.Clamp(currentScale - deltaY * 0.001, 0.5, 1.5)
+      workshopContainer.setScale(newScale)
+    })
+    
+    // Close button functionality
+    closeBtn.on('pointerover', () => {
+      closeBtn.setFillStyle(0xc0392b)
+      closeBtn.setScale(1.1)
+      closeText.setScale(1.1)
+    })
+    
+    closeBtn.on('pointerout', () => {
+      closeBtn.setFillStyle(0xe94560)
+      closeBtn.setScale(1)
+      closeText.setScale(1)
+    })
+    
+    closeBtn.on('pointerdown', () => {
+      this.dialogOpen = false
+      overlay.destroy()
+      dialogContainer.destroy(true)
+    })
   }
   
   private deleteBuilding(tileData: TileData) {
