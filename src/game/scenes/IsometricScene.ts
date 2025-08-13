@@ -18,12 +18,15 @@ interface BuildingSize {
   height: number
 }
 
+/* Unused - old Phaser UI interface
 interface CategoryButton {
   container: Phaser.GameObjects.Container
   icon: Phaser.GameObjects.Text
   category: string
 }
+*/
 
+/* Unused - React WorkshopMenu handles workshop data now
 interface Workshop {
   id: string
   stream?: string
@@ -36,6 +39,7 @@ interface Workshop {
   prerequisites?: string[]
   completed?: boolean
 }
+*/
 
 export default class IsometricScene extends Phaser.Scene {
   private gridSize = 8
@@ -46,7 +50,7 @@ export default class IsometricScene extends Phaser.Scene {
   private highlightGraphics: Phaser.GameObjects.Graphics | null = null
   private gridContainer: Phaser.GameObjects.Container | null = null
   private uiContainer: Phaser.GameObjects.Container | null = null
-  private categoryButtons: CategoryButton[] = []
+  // private categoryButtons: CategoryButton[] = [] // Unused - React UI
   private currentCategory = 'apartments'
   private buildings: Phaser.GameObjects.Image[] = []
   private isDragging = false
@@ -58,6 +62,8 @@ export default class IsometricScene extends Phaser.Scene {
   private buildingPreview: Phaser.GameObjects.Image | null = null
   private completedWorkshops: Set<string> = new Set()
   private placedSignatureBuildings: Set<string> = new Set()
+  private onWorkshopMenuOpen: (() => void) | null = null
+  private onBuildingPlaced: (() => void) | null = null
 
   // NPC on roads (GSAP-driven)
   private roadNpcSprite: Phaser.GameObjects.Image | null = null
@@ -175,13 +181,9 @@ export default class IsometricScene extends Phaser.Scene {
 
 
   private resize() {
-    const width = this.scale.width
-    const height = this.scale.height
-    
     // Reposition UI container at bottom (hidden when using React UI)
     if (this.uiContainer) {
       this.uiContainer.setVisible(false) // Hide old UI
-      // this.uiContainer.setPosition(width / 2, height - 60)
     }
     
     // Center grid if not being dragged
@@ -190,6 +192,7 @@ export default class IsometricScene extends Phaser.Scene {
     }
   }
 
+  /* Unused - React UI is used instead
   private createUI() {
     const width = this.scale.width
     const height = this.scale.height
@@ -359,7 +362,9 @@ export default class IsometricScene extends Phaser.Scene {
     // Make UI always on top
     this.uiContainer.setDepth(10000)
   }
+  */
   
+  /* Unused - old Phaser UI helper
   private lightenColor(color: number, amount: number): number {
     const r = (color >> 16) & 0xff
     const g = (color >> 8) & 0xff
@@ -371,7 +376,9 @@ export default class IsometricScene extends Phaser.Scene {
     
     return (newR << 16) | (newG << 8) | newB
   }
+  */
   
+  /* Unused - old Phaser UI effect
   private createSparkleEffect(x: number, y: number) {
     for (let i = 0; i < 6; i++) {
       const sparkle = this.add.text(
@@ -394,9 +401,11 @@ export default class IsometricScene extends Phaser.Scene {
       })
     }
   }
+  */
   
   
   
+  /* Unused - old Phaser UI helper
   private getColorForBuilding(color: string): number {
     const colorMap: { [key: string]: number } = {
       'Blue': 0x3498db,
@@ -408,7 +417,9 @@ export default class IsometricScene extends Phaser.Scene {
     }
     return colorMap[color] || 0x7f8c8d
   }
+  */
   
+  /* Unused - React UI handles building panels now
   private showBuildingPanel(category: string) {
     this.currentCategory = category
     
@@ -834,7 +845,9 @@ export default class IsometricScene extends Phaser.Scene {
       })
     })
   }
+  */
   
+  /* Unused - React UI handles category button updates now
   private updateCategoryButtons(activeCategory: string) {
     this.categoryButtons.forEach(btn => {
       if (btn.category === activeCategory) {
@@ -864,6 +877,7 @@ export default class IsometricScene extends Phaser.Scene {
       }
     })
   }
+  */
 
   private initializeGrid() {
     for (let y = 0; y < this.gridSize; y++) {
@@ -1051,14 +1065,16 @@ export default class IsometricScene extends Phaser.Scene {
           
           // Check if clicking on University building
           if (clickedBuilding && clickedBuilding.texture.key === 'signature_university') {
-            this.showWorkshopPopup()
+            this.openWorkshopMenuFromReact()
           } 
           // Check if we're in delete mode
           else if (this.currentCategory === 'delete' && clickedBuilding) {
+            console.log('Attempting to delete building:', clickedBuilding.texture.key)
             // Find the origin tile for proper deletion
             for (let row = 0; row < this.gridSize; row++) {
               for (let col = 0; col < this.gridSize; col++) {
                 if (this.tiles[row][col].building === clickedBuilding) {
+                  console.log('Found building tile, deleting...')
                   this.deleteBuilding(this.tiles[row][col])
                   break
                 }
@@ -1165,6 +1181,14 @@ export default class IsometricScene extends Phaser.Scene {
       return
     }
     
+    // Check if this is a signature building that already exists
+    if (this.selectedBuilding.includes('signature_')) {
+      if (this.placedSignatureBuildings.has(this.selectedBuilding)) {
+        console.log('Cannot place building - only one of each special building is allowed')
+        return
+      }
+    }
+    
     // Calculate the center position based on all tiles the building will occupy
     let totalX = 0
     let totalY = 0
@@ -1243,6 +1267,10 @@ export default class IsometricScene extends Phaser.Scene {
     // Track signature building placement
     if (this.selectedBuilding && this.selectedBuilding.includes('signature_')) {
       this.placedSignatureBuildings.add(this.selectedBuilding)
+      // Notify React that a signature building was placed
+      if (this.onBuildingPlaced) {
+        this.onBuildingPlaced()
+      }
     }
     
     // Clear the building preview after successful placement
@@ -1344,10 +1372,12 @@ export default class IsometricScene extends Phaser.Scene {
     return true
   }
   
+  /* Unused - React UI handles building selection
   private selectBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
     this.createBuildingPreview(buildingKey)
   }
+  */
 
   public setSelectedBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
@@ -1372,30 +1402,43 @@ export default class IsometricScene extends Phaser.Scene {
     this.currentCategory = 'delete'
     this.selectedBuilding = null
     this.clearBuildingPreview()
+    console.log('Delete mode set in Phaser scene, currentCategory:', this.currentCategory)
+  }
+
+  public setWorkshopMenuCallback(callback: () => void) {
+    this.onWorkshopMenuOpen = callback
+  }
+
+  public setBuildingPlacementCallback(callback: () => void) {
+    this.onBuildingPlaced = callback
+  }
+
+  private openWorkshopMenuFromReact() {
+    if (this.onWorkshopMenuOpen) {
+      this.onWorkshopMenuOpen()
+    }
   }
 
   public isBuildingUnlocked(buildingKey: string): boolean {
     // Check if the building's workshop is built
     const signatureBuildings = [
-      { key: 'signature_townhall', requiredWorkshop: 'COMMON' },
-      { key: 'signature_library', requiredWorkshop: 'A1' },
-      { key: 'signature_football_american', requiredWorkshop: 'A2' },
-      { key: 'signature_football_soccer', requiredWorkshop: 'B2' },
-      { key: 'signature_cricket', requiredWorkshop: 'C2' },
-      { key: 'signature_baseball', requiredWorkshop: 'F1' },
-      { key: 'signature_fire_station', requiredWorkshop: 'F2' },
-      { key: 'signature_police_station', requiredWorkshop: 'F3' },
-      { key: 'signature_hospital', requiredWorkshop: 'F4' },
-      { key: 'signature_emergency_room', requiredWorkshop: 'E' }
+      { key: 'signature_townhall', requiredWorkshop: 'A1' },
+      { key: 'signature_library', requiredWorkshop: 'B1' },
+      { key: 'signature_football_american', requiredWorkshop: 'C1' },
+      { key: 'signature_football_soccer', requiredWorkshop: 'COMMON' },
+      { key: 'signature_cricket', requiredWorkshop: 'A3' },
+      { key: 'signature_baseball', requiredWorkshop: 'B3' },
+      { key: 'signature_fire_station', requiredWorkshop: 'C3' },
+      { key: 'signature_police_station', requiredWorkshop: 'A3' },
+      { key: 'signature_hospital', requiredWorkshop: 'B3' },
+      { key: 'signature_emergency_room', requiredWorkshop: 'C3' }
     ]
     
     const building = signatureBuildings.find(b => b.key === buildingKey)
     if (!building) return true // Non-signature buildings are always unlocked
     
-    if (building.requiredWorkshop === 'COMMON') return true // Common buildings are always unlocked
-    
     // Check if the required workshop is built
-    return this.workshopBuiltTiles.has(building.requiredWorkshop)
+    return this.completedWorkshops.has(building.requiredWorkshop)
   }
 
   private createBuildingPreview(buildingKey: string) {
@@ -1439,7 +1482,7 @@ export default class IsometricScene extends Phaser.Scene {
     const centerTile = this.tiles[centerRow][centerCol]
     this.placeBuilding(centerTile)
     
-    // Add bouncing animation to the University building
+    // Add bouncing animation and glow effect to the University building
     const universityBuilding = this.buildings[this.buildings.length - 1]
     if (universityBuilding) {
       const baseY = universityBuilding.y
@@ -1451,6 +1494,19 @@ export default class IsometricScene extends Phaser.Scene {
         duration: 1000, // 1 second up
         ease: 'Sine.easeInOut',
         yoyo: true, // Return to original position
+        repeat: -1 // Infinite repeat
+      })
+      
+      // Add bright shining effect (tint pulsing, not transparency)
+      universityBuilding.setTint(0xffff88) // Bright yellow shine
+      
+      // Create pulsing shine animation by changing tint intensity
+      this.tweens.add({
+        targets: universityBuilding,
+        tint: 0xffffff, // Pulse from yellow to bright white
+        duration: 1200,
+        ease: 'Sine.easeInOut',
+        yoyo: true, // Return to yellow
         repeat: -1 // Infinite repeat
       })
     }
@@ -1693,6 +1749,7 @@ export default class IsometricScene extends Phaser.Scene {
     }
   }
   
+  /* Unused - React WorkshopMenu handles prerequisites now
   private checkPrerequisites(workshop: Workshop): boolean {
     if (!workshop.prerequisites || workshop.prerequisites.length === 0) {
       return true
@@ -1716,25 +1773,10 @@ export default class IsometricScene extends Phaser.Scene {
     // For all other workshops, need ALL prerequisites completed
     return workshop.prerequisites.every(prereq => this.completedWorkshops.has(prereq))
   }
+  */
   
-  private isBuildingUnlocked(buildingKey: string): boolean {
-    const buildingUnlockRequirements: { [key: string]: string } = {
-      'signature_townhall': 'COMMON', // Leadership Foundations
-      'signature_library': 'A1', // Communication Skills
-      'signature_football_american': 'A2', // Public Speaking
-      'signature_football_soccer': 'B2', // Team Building
-      'signature_cricket': 'C2', // Strategic Planning
-      'signature_baseball': 'F1', // Executive Communication
-      'signature_fire_station': 'F2', // Change Management
-      'signature_police_station': 'F3', // Innovation Leadership
-      'signature_hospital': 'F4', // Business Strategy
-      'signature_emergency_room': 'E' // Executive Leadership
-    }
-    
-    const requiredWorkshop = buildingUnlockRequirements[buildingKey]
-    return requiredWorkshop ? this.completedWorkshops.has(requiredWorkshop) : false
-  }
   
+  /* Unused - React WorkshopMenu handles this now
   private showWorkshopPopup() {
     const width = this.scale.width
     const height = this.scale.height
@@ -2044,7 +2086,9 @@ export default class IsometricScene extends Phaser.Scene {
       dialogContainer.destroy(true)
     })
   }
+  */
   
+  /* Unused - React WorkshopMenu handles this now
   private showWorkshopDetails(workshop: Workshop, overlay: Phaser.GameObjects.Rectangle, mainDialog: Phaser.GameObjects.Container) {
     const width = this.scale.width
     const height = this.scale.height
@@ -2175,6 +2219,7 @@ export default class IsometricScene extends Phaser.Scene {
       detailsContainer.destroy(true)
     })
   }
+  */
   
   private deleteBuilding(tileData: TileData) {
     if (!tileData.building) return
@@ -2228,6 +2273,10 @@ export default class IsometricScene extends Phaser.Scene {
     const deletedBuildingKey = building.texture.key
     if (deletedBuildingKey.includes('signature_')) {
       this.placedSignatureBuildings.delete(deletedBuildingKey)
+      // Notify React that a signature building was deleted (now available again)
+      if (this.onBuildingPlaced) {
+        this.onBuildingPlaced()
+      }
     }
     
     // Destroy the building sprite
