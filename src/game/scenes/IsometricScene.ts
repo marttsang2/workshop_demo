@@ -137,7 +137,7 @@ export default class IsometricScene extends Phaser.Scene {
     this.createIsometricGrid()
     this.centerContainerOnGrid()
     this.setupInteraction()
-    this.createUI()
+    // this.createUI() // Commented out - using React UI instead
     
     // Initialize with University in center and roads around it
     // This must happen AFTER container is positioned
@@ -178,9 +178,10 @@ export default class IsometricScene extends Phaser.Scene {
     const width = this.scale.width
     const height = this.scale.height
     
-    // Reposition UI container at bottom
+    // Reposition UI container at bottom (hidden when using React UI)
     if (this.uiContainer) {
-      this.uiContainer.setPosition(width / 2, height - 60)
+      this.uiContainer.setVisible(false) // Hide old UI
+      // this.uiContainer.setPosition(width / 2, height - 60)
     }
     
     // Center grid if not being dragged
@@ -1351,6 +1352,50 @@ export default class IsometricScene extends Phaser.Scene {
   public setSelectedBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
     this.createBuildingPreview(buildingKey)
+  }
+
+  // New methods for React UI integration
+  public selectBuildingFromReact(buildingKey: string) {
+    this.selectedBuilding = buildingKey
+    this.createBuildingPreview(buildingKey)
+  }
+
+  public setCategoryFromReact(category: string) {
+    this.currentCategory = category
+    if (category === 'delete') {
+      this.selectedBuilding = null
+      this.clearBuildingPreview()
+    }
+  }
+
+  public setDeleteModeFromReact() {
+    this.currentCategory = 'delete'
+    this.selectedBuilding = null
+    this.clearBuildingPreview()
+  }
+
+  public isBuildingUnlocked(buildingKey: string): boolean {
+    // Check if the building's workshop is built
+    const signatureBuildings = [
+      { key: 'signature_townhall', requiredWorkshop: 'COMMON' },
+      { key: 'signature_library', requiredWorkshop: 'A1' },
+      { key: 'signature_football_american', requiredWorkshop: 'A2' },
+      { key: 'signature_football_soccer', requiredWorkshop: 'B2' },
+      { key: 'signature_cricket', requiredWorkshop: 'C2' },
+      { key: 'signature_baseball', requiredWorkshop: 'F1' },
+      { key: 'signature_fire_station', requiredWorkshop: 'F2' },
+      { key: 'signature_police_station', requiredWorkshop: 'F3' },
+      { key: 'signature_hospital', requiredWorkshop: 'F4' },
+      { key: 'signature_emergency_room', requiredWorkshop: 'E' }
+    ]
+    
+    const building = signatureBuildings.find(b => b.key === buildingKey)
+    if (!building) return true // Non-signature buildings are always unlocked
+    
+    if (building.requiredWorkshop === 'COMMON') return true // Common buildings are always unlocked
+    
+    // Check if the required workshop is built
+    return this.workshopBuiltTiles.has(building.requiredWorkshop)
   }
 
   private createBuildingPreview(buildingKey: string) {

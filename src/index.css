@@ -72,4 +72,10 @@
     -o-user-drag: none;
     user-drag: none;
   }
+  
+  .pixelated {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+  }
 }
