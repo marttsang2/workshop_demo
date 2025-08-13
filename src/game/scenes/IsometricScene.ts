@@ -74,7 +74,7 @@ export default class IsometricScene extends Phaser.Scene {
     // Load signature buildings (all 2x2) from public folder
     this.load.image('signature_hospital', 'GiantCityBuilder/Public/Doctor_Hospital.png')
     this.load.image('signature_university', 'GiantCityBuilder/Public/Education_University.png')
-    this.load.image('signature_cinema', 'GiantCityBuilder/Public/Leasure_Cinema.png')
+    // this.load.image('signature_cinema', 'GiantCityBuilder/Public/Leasure_Cinema.png')
   }
 
   create() {
@@ -322,7 +322,7 @@ export default class IsometricScene extends Phaser.Scene {
       const signatures = [
         { key: 'signature_hospital', name: '🏥 Hospital', description: 'Medical Center' },
         { key: 'signature_university', name: '🎓 University', description: 'Education' },
-        { key: 'signature_cinema', name: '🎬 Cinema', description: 'Entertainment' }
+        // { key: 'signature_cinema', name: '🎬 Cinema', description: 'Entertainment' }
       ]
       
       signatures.forEach((building, index) => {
@@ -763,14 +763,20 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Get average position (center of all occupied tiles)
     const localX = totalX / tileCount
-    const localY = totalY / tileCount - 16
+    let localY = totalY / tileCount
     
+    if (buildingSize.height === 1) {
+      localY -= 32
+    } else {
+      localY -= 8
+    }
+
     // Calculate world position
     const worldX = this.gridContainer.x + localX * this.gridContainer.scale
     const worldY = this.gridContainer.y + localY * this.gridContainer.scale
     
     const building = this.add.image(worldX, worldY, this.selectedBuilding)
-    building.setOrigin(0.5, 0.7)
+    building.setOrigin(0.5, 0.65)
     
     // Store local position for updates
     building.setData('localX', localX)
