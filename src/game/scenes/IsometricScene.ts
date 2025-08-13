@@ -1,4 +1,8 @@
 import Phaser from 'phaser'
+import { gsap } from 'gsap'
+import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
+
+gsap.registerPlugin(MotionPathPlugin)
 
 interface TileData {
   x: number
@@ -21,7 +25,7 @@ interface CategoryButton {
 }
 
 export default class IsometricScene extends Phaser.Scene {
-  private gridSize = 7
+  private gridSize = 8
   private tileWidth = 130
   private tileHeight = 80
   private tiles: TileData[][] = []
@@ -38,6 +42,22 @@ export default class IsometricScene extends Phaser.Scene {
   private containerStartX = 0
   private containerStartY = 0
   private dialogOpen = false
+
+  // NPC on roads (GSAP-driven)
+  private roadNpcSprite: Phaser.GameObjects.Image | null = null
+  private roadNpcSpeech: Phaser.GameObjects.Text | null = null
+  private roadNpcTween: gsap.core.Tween | null = null
+  private roadSpeechTimer: Phaser.Time.TimerEvent | null = null
+  private readonly roadSpeechLines: string[] = [
+    'Looking for career workshops!',
+    'Can\'t wait for the next seminar!',
+    'Where\'s the university center?',
+    'Need to update my resume...',
+    'Heading to my internship!',
+    'Anyone joining the workshop?',
+    'Career fair today!',
+    'On my way to class!'
+  ]
 
   constructor() {
     super({ key: 'IsometricScene' })
@@ -71,32 +91,64 @@ export default class IsometricScene extends Phaser.Scene {
       this.load.image(`grass_road_${i}`, `GiantCityBuilder/Tiles/GrassRoad_Tile${i}.png`)
     }
     
+    // Load simple NPC sprites (static)
+    for (let i = 1; i <= 5; i++) {
+      this.load.image(`npc_${i}`, `NPC/${i}.gif`)
+    }
+    
     // Load signature buildings (all 2x2) from public folder
     this.load.image('signature_hospital', 'GiantCityBuilder/Public/Doctor_Hospital.png')
     this.load.image('signature_university', 'GiantCityBuilder/Public/Education_University.png')
-    this.load.image('signature_cinema', 'GiantCityBuilder/Public/Leasure_Cinema.png')
+    // this.load.image('signature_cinema', 'GiantCityBuilder/Public/Leasure_Cinema.png')
   }
 
   create() {
     this.cameras.main.setBackgroundColor('#5DADE2')
     
+    // Create container; we'll center it after tiles are created based on bounds
     this.gridContainer = this.add.container(0, 0)
     this.highlightGraphics = this.add.graphics()
     
     this.initializeGrid()
     this.createIsometricGrid()
+    this.centerContainerOnGrid()
     this.setupInteraction()
     this.createUI()
     
-    const centerX = this.cameras.main.width / 2
-    const centerY = this.cameras.main.height / 2 - 50
-    this.gridContainer.setPosition(centerX, centerY)
+    // Initialize with University in center and roads around it
+    // This must happen AFTER container is positioned
+    this.initializeStartingBuildings()
     
     // Handle window resize
     this.scale.on('resize', this.resize, this)
     this.resize()
   }
   
+  private centerContainerOnGrid() {
+    if (!this.gridContainer) return
+    const children = this.gridContainer.list as Phaser.GameObjects.GameObject[]
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    children.forEach(obj => {
+      const dm = (obj as unknown as { data?: Phaser.Data.DataManager }).data
+      if (dm && dm.has('gridX') && dm.has('gridY')) {
+        const pos = obj as unknown as { x: number; y: number }
+        if (pos.x < minX) minX = pos.x
+        if (pos.y < minY) minY = pos.y
+        if (pos.x > maxX) maxX = pos.x
+        if (pos.y > maxY) maxY = pos.y
+      }
+    })
+    if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return
+    const gridCenterX = (minX + maxX) / 2
+    const gridCenterY = (minY + maxY) / 2
+    const screenCenterX = this.cameras.main.width / 2
+    const screenCenterY = this.cameras.main.height / 2
+    this.gridContainer.setPosition(screenCenterX - gridCenterX, screenCenterY - gridCenterY)
+  }
+
 
   private resize() {
     const width = this.scale.width
@@ -109,7 +161,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Center grid if not being dragged
     if (!this.isDragging && this.gridContainer) {
-      this.gridContainer.setPosition(width / 2, height / 2 - 50)
+      this.centerContainerOnGrid()
     }
   }
 
@@ -322,7 +374,7 @@ export default class IsometricScene extends Phaser.Scene {
       const signatures = [
         { key: 'signature_hospital', name: '🏥 Hospital', description: 'Medical Center' },
         { key: 'signature_university', name: '🎓 University', description: 'Education' },
-        { key: 'signature_cinema', name: '🎬 Cinema', description: 'Entertainment' }
+        // { key: 'signature_cinema', name: '🎬 Cinema', description: 'Entertainment' }
       ]
       
       signatures.forEach((building, index) => {
@@ -478,7 +530,7 @@ export default class IsometricScene extends Phaser.Scene {
           x: x,
           y: y,
           occupied: false,
-          tile: null as any,
+          tile: null as unknown as Phaser.GameObjects.Image,
           groundType: 'grass'
         }
       }
@@ -488,8 +540,8 @@ export default class IsometricScene extends Phaser.Scene {
   private createIsometricGrid() {
     for (let row = 0; row < this.gridSize; row++) {
       for (let col = 0; col < this.gridSize; col++) {
-        const isoX = (col - row) * (this.tileWidth / 2)
-        const isoY = (col + row) * (this.tileHeight / 2)
+        const isoX = (col - row) * (this.tileWidth / 2) + col * 2
+        const isoY = (col + row) * (this.tileHeight / 2) - row * 2
 
         const tile = this.add.image(isoX, isoY, 'ground_tile')
         tile.setOrigin(0.5, 0.5)
@@ -497,11 +549,11 @@ export default class IsometricScene extends Phaser.Scene {
         const tileScale = this.tileWidth / tile.width
         tile.setScale(tileScale)
         
-        // Depth calculation for isometric view
-        // Objects further down and to the right should appear on top
-        // Use row as primary sort, column as secondary
-        const depth = row * 1000 + col * 10
+        // Stable depth calculation based on grid coordinates
+        // Ensures consistent ordering independent of interaction/click order
+        const depth = (row + col) * 1000 + col
         tile.setDepth(depth)
+        tile.setData('gridDepth', depth)
         
         tile.setInteractive()
         tile.setData('gridX', col)
@@ -511,6 +563,8 @@ export default class IsometricScene extends Phaser.Scene {
         this.gridContainer?.add(tile)
       }
     }
+    // Ensure children in the container are ordered by their depth
+    this.resortGridChildrenByDepth()
   }
 
   private setupInteraction() {
@@ -632,9 +686,49 @@ export default class IsometricScene extends Phaser.Scene {
         const tile = this.getTileAtPosition(localX, localY)
         
         if (tile) {
+          // Check if clicking on a building (including multi-tile buildings)
+          let clickedBuilding = tile.building
+          
+          // If tile is occupied but no building reference, check nearby tiles for 2x2 buildings
+          if (tile.occupied && !clickedBuilding) {
+            // Check all possible positions where this could be part of a 2x2 building
+            for (let dy = 0; dy <= 1; dy++) {
+              for (let dx = 0; dx <= 1; dx++) {
+                const checkY = tile.y - dy
+                const checkX = tile.x - dx
+                if (checkY >= 0 && checkX >= 0 && 
+                    checkY < this.gridSize && checkX < this.gridSize) {
+                  const checkTile = this.tiles[checkY][checkX]
+                  if (checkTile.building) {
+                    // Verify this building actually covers the clicked tile
+                    const buildingSize = this.getBuildingSize(checkTile.building.texture.key)
+                    if (checkX + buildingSize.width > tile.x && 
+                        checkY + buildingSize.height > tile.y) {
+                      clickedBuilding = checkTile.building
+                      break
+                    }
+                  }
+                }
+              }
+              if (clickedBuilding) break
+            }
+          }
+          
+          // Check if clicking on University building
+          if (clickedBuilding && clickedBuilding.texture.key === 'signature_university') {
+            this.showWorkshopPopup()
+          } 
           // Check if we're in delete mode
-          if (this.currentCategory === 'delete' && tile.occupied && tile.building) {
-            this.deleteBuilding(tile)
+          else if (this.currentCategory === 'delete' && clickedBuilding) {
+            // Find the origin tile for proper deletion
+            for (let row = 0; row < this.gridSize; row++) {
+              for (let col = 0; col < this.gridSize; col++) {
+                if (this.tiles[row][col].building === clickedBuilding) {
+                  this.deleteBuilding(this.tiles[row][col])
+                  break
+                }
+              }
+            }
           } else if (this.selectedBuilding && !tile.occupied) {
             this.placeBuilding(tile)
           }
@@ -644,10 +738,12 @@ export default class IsometricScene extends Phaser.Scene {
       this.isDragging = false
       hasDraggedEnough = false
       pointerDownTime = 0
+      // Restore correct draw order in case any interaction changed child order
+      this.resortGridChildrenByDepth()
     })
     
     // Mouse wheel zoom
-    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: any[], _deltaX: number, deltaY: number) => {
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
       // Don't handle input if a dialog is open
       if (this.dialogOpen) return
       
@@ -660,26 +756,16 @@ export default class IsometricScene extends Phaser.Scene {
         this.updateBuildingPositions()
       }
     })
+
+    // Ensure any game object interactions don't leave incorrect draw order
+    this.input.on('gameobjectdown', () => {
+      this.resortGridChildrenByDepth()
+    })
   }
   
   private updateBuildingPositions() {
-    if (!this.gridContainer) return
-    
-    // Update all buildings based on their stored local positions
-    this.buildings.forEach(building => {
-      const localX = building.getData('localX')
-      const localY = building.getData('localY')
-      
-      if (localX !== undefined && localY !== undefined) {
-        // Update building position based on container position and scale
-        building.x = this.gridContainer!.x + localX * this.gridContainer!.scale
-        building.y = this.gridContainer!.y + localY * this.gridContainer!.scale
-        
-        // Update building scale
-        const originalScale = this.tileWidth / 512 // Assuming 512 is the original tile image width
-        building.setScale(originalScale * this.gridContainer!.scale)
-      }
-    })
+    // Buildings are now in the container, so they scale and move automatically
+    // No need to manually update their positions or scales
   }
 
   private drawTileHighlight(x: number, y: number, scale: number = 1) {
@@ -763,31 +849,46 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Get average position (center of all occupied tiles)
     const localX = totalX / tileCount
-    const localY = totalY / tileCount
+    let localY = totalY / tileCount
     
-    // Calculate world position
-    const worldX = this.gridContainer.x + localX * this.gridContainer.scale
-    const worldY = this.gridContainer.y + localY * this.gridContainer.scale
+    if (buildingSize.height === 1) {
+      localY -= 32
+    } else {
+      localY -= 8
+    }
+
+    // Create building at local coordinates (relative to container)
+    const building = this.add.image(localX, localY, this.selectedBuilding)
+    building.setOrigin(0.5, 0.65)
     
-    const building = this.add.image(worldX, worldY, this.selectedBuilding)
-    building.setOrigin(0.5, 0.7)
+    // Add building to the container so it moves with the grid
+    this.gridContainer.add(building)
     
-    // Store local position for updates
+    // Store local position for reference
     building.setData('localX', localX)
     building.setData('localY', localY)
     
-    // Scale building to match tile size and container scale
+    // Scale building to match tile size
     const baseTile = this.tiles[gridY][gridX].tile
-    const tileScale = baseTile.scaleX * this.gridContainer.scale
+    const tileScale = baseTile.scaleX
     building.setScale(tileScale)
     
     // Calculate depth for isometric view
-    // For multi-tile buildings, use the furthest point (bottom-right) for depth
-    // This ensures proper sorting with other objects
-    const depthY = gridY + buildingSize.height - 1  // Bottom row of building
-    const depthX = gridX + buildingSize.width - 1   // Right column of building
-    const depth = depthY * 1000 + depthX * 10 + 5  // +5 to be above ground tile
+    // For proper isometric sorting, we need to use the screen Y position
+    // Buildings that appear lower on screen (higher Y in screen coordinates) should have higher depth
+    // We use the isometric formula to calculate the screen position, then use that for depth
+    
+    // Calculate the screen position of the building's base (bottom tile)
+    const baseY = gridY + buildingSize.height - 1  // Bottom row of building  
+    const baseX = gridX + buildingSize.width - 1   // Right column of building
+    
+    // Stable depth based on grid coordinates (independent of click order)
+    // Offset by +100 so buildings render above ground tiles at same grid location
+    const depth = (baseX + baseY) * 1000 + baseX + 100
     building.setDepth(depth)
+    building.setData('gridDepth', depth)
+    // Reorder container children to respect updated depths
+    this.resortGridChildrenByDepth()
     
     // Mark all covered tiles as occupied
     for (let dy = 0; dy < buildingSize.height; dy++) {
@@ -803,6 +904,20 @@ export default class IsometricScene extends Phaser.Scene {
     }
     
     this.buildings.push(building)
+  }
+
+  private resortGridChildrenByDepth() {
+    if (!this.gridContainer) return
+    const children = this.gridContainer.list as Phaser.GameObjects.GameObject[]
+    const getGridDepth = (obj: Phaser.GameObjects.GameObject): number => {
+      const dm = (obj as unknown as { data?: Phaser.Data.DataManager }).data
+      const val = dm?.get('gridDepth')
+      return typeof val === 'number' ? val : 0
+    }
+    const sorted = [...children].sort((a, b) => getGridDepth(a) - getGridDepth(b))
+    sorted.forEach((child, index) => {
+      this.gridContainer!.moveTo(child, index)
+    })
   }
   
   private placeGroundTile(tileData: TileData) {
@@ -834,6 +949,8 @@ export default class IsometricScene extends Phaser.Scene {
     this.tiles[gridY][gridX].groundType = this.selectedBuilding
     
     // Roads don't occupy the tile for buildings
+    // Update road NPC path whenever roads change
+    this.updateRoadNpcPath()
   }
 
   private getBuildingSize(buildingKey: string): BuildingSize {
@@ -883,6 +1000,551 @@ export default class IsometricScene extends Phaser.Scene {
 
   public setSelectedBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
+  }
+  
+  private initializeStartingBuildings() {
+    // Place University in the center of the grid (3,3 for 8x8 grid, as it's 2x2)
+    const centerRow = 3
+    const centerCol = 3
+    
+    // Place the University building
+    this.selectedBuilding = 'signature_university'
+    const centerTile = this.tiles[centerRow][centerCol]
+    this.placeBuilding(centerTile)
+    
+    // Add bouncing animation to the University building
+    const universityBuilding = this.buildings[this.buildings.length - 1]
+    if (universityBuilding) {
+      const baseY = universityBuilding.y
+      
+      // Create a bouncing tween animation
+      this.tweens.add({
+        targets: universityBuilding,
+        y: baseY - 8, // Bounce up by 8 pixels
+        duration: 1000, // 1 second up
+        ease: 'Sine.easeInOut',
+        yoyo: true, // Return to original position
+        repeat: -1 // Infinite repeat
+      })
+    }
+    
+    // Place roads around the University (forming a square)
+    // University occupies (3,3), (3,4), (4,3), (4,4)
+    // Roads should be at positions surrounding this 2x2 area
+    
+    // Road tile mapping based on Phaser road types:
+    // road_1: Straight horizontal (→)
+    // road_2: Straight vertical (↓)
+    // road_3: Turn bottom-right (↘)
+    // road_4: Turn bottom-left (↙)
+    // road_5: Turn top-right (↗)
+    // road_6: Turn top-left (↖)
+    // road_7: T-junction
+    // road_8: Cross/4-way
+    // road_9: End cap
+    
+    
+    // Clear selection after initialization
+    this.selectedBuilding = null
+  }
+
+  // --- Road + NPC helpers ---
+  private isRoadGround(groundType: string | undefined): boolean {
+    if (!groundType) return false
+    return groundType.includes('road_') || groundType.includes('grass_road_')
+  }
+
+  private updateRoadNpcPath() {
+    if (!this.gridContainer) return
+    // Collect all road tiles
+    const roadPositions: { x: number; y: number }[] = []
+    for (let y = 0; y < this.gridSize; y++) {
+      for (let x = 0; x < this.gridSize; x++) {
+        if (this.isRoadGround(this.tiles[y][x].groundType)) {
+          roadPositions.push({ x, y })
+        }
+      }
+    }
+    if (roadPositions.length === 0) {
+      this.teardownRoadNpc()
+      return
+    }
+
+    // Build adjacency and find largest connected component
+    const key = (x: number, y: number) => `${x},${y}`
+    const roadSet = new Set(roadPositions.map(p => key(p.x, p.y)))
+    const visited = new Set<string>()
+    let largestComponent: { x: number; y: number }[] = []
+
+    const neighbors = (x: number, y: number) => {
+      const out: { x: number; y: number }[] = []
+      const dirs = [
+        { dx: 1, dy: 0 },
+        { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 },
+        { dx: 0, dy: -1 }
+      ]
+      for (const d of dirs) {
+        const nx = x + d.dx
+        const ny = y + d.dy
+        if (nx >= 0 && nx < this.gridSize && ny >= 0 && ny < this.gridSize) {
+          if (roadSet.has(key(nx, ny))) out.push({ x: nx, y: ny })
+        }
+      }
+      return out
+    }
+
+    for (const p of roadPositions) {
+      const k = key(p.x, p.y)
+      if (visited.has(k)) continue
+      const comp: { x: number; y: number }[] = []
+      const q: { x: number; y: number }[] = [p]
+      visited.add(k)
+      while (q.length) {
+        const cur = q.shift()!
+        comp.push(cur)
+        for (const nb of neighbors(cur.x, cur.y)) {
+          const nk = key(nb.x, nb.y)
+          if (!visited.has(nk)) {
+            visited.add(nk)
+            q.push(nb)
+          }
+        }
+      }
+      if (comp.length > largestComponent.length) largestComponent = comp
+    }
+
+    if (largestComponent.length < 2) {
+      // Not enough path to walk meaningfully
+      this.teardownRoadNpc()
+      return
+    }
+
+    // Build a simple path across the component: pick random start, BFS to farthest node
+    const start = largestComponent[Math.floor(Math.random() * largestComponent.length)]
+    const pred = new Map<string, string>()
+    const dist = new Map<string, number>()
+    const q: { x: number; y: number }[] = [start]
+    dist.set(key(start.x, start.y), 0)
+    let far = start
+    while (q.length) {
+      const cur = q.shift()!
+      const curK = key(cur.x, cur.y)
+      const curD = dist.get(curK) ?? 0
+      for (const nb of neighbors(cur.x, cur.y)) {
+        const nk = key(nb.x, nb.y)
+        if (!dist.has(nk)) {
+          dist.set(nk, curD + 1)
+          pred.set(nk, curK)
+          q.push(nb)
+          if ((dist.get(nk) ?? 0) > (dist.get(key(far.x, far.y)) ?? 0)) far = nb
+        }
+      }
+    }
+
+    // Reconstruct path from far back to start
+    const path: { x: number; y: number }[] = []
+    let curK = key(far.x, far.y)
+    while (true) {
+      const [cx, cy] = curK.split(',').map(Number)
+      path.push({ x: cx, y: cy })
+      const pk = pred.get(curK)
+      if (!pk) break
+      curK = pk
+    }
+    path.reverse()
+
+    if (path.length < 2) {
+      this.teardownRoadNpc()
+      return
+    }
+
+    // Convert path tiles to container-local pixel points
+    const points = path.map(p => {
+      const t = this.tiles[p.y][p.x].tile
+      // Slight upward offset so NPC sits visually on the road
+      return { x: t.x, y: t.y - 10 }
+    })
+
+    this.ensureRoadNpc(points[0])
+    this.animateNpcAlong(points)
+  }
+
+  private ensureRoadNpc(startPoint: { x: number; y: number }) {
+    if (!this.gridContainer) return
+    if (!this.roadNpcSprite) {
+      const npcIndex = 1 + Math.floor(Math.random() * 5)
+      this.roadNpcSprite = this.add.image(startPoint.x, startPoint.y, `npc_${npcIndex}`)
+      this.roadNpcSprite.setOrigin(0.5, 0.85)
+      this.gridContainer.add(this.roadNpcSprite)
+      // Match tile scale
+      const baseTile = this.tiles[0][0].tile
+      this.roadNpcSprite.setScale(baseTile.scaleX)
+      // Keep on top of grid elements
+      this.roadNpcSprite.setDepth(999999)
+      this.roadNpcSprite.setData('gridDepth', 999999)
+    }
+    if (!this.roadNpcSpeech) {
+      this.roadNpcSpeech = this.add.text(startPoint.x, startPoint.y - 40, '', {
+        fontSize: '12px',
+        color: '#ffffff'
+      }).setOrigin(0.5, 1)
+      this.gridContainer.add(this.roadNpcSpeech)
+      this.roadNpcSpeech.setDepth(1000000)
+      this.roadNpcSpeech.setData('gridDepth', 1000000)
+    }
+    if (!this.roadSpeechTimer) {
+      this.roadSpeechTimer = this.time.addEvent({
+        delay: Math.random() * 5000 + 1000,
+        loop: true,
+        callback: () => {
+          if (!this.roadNpcSpeech) return
+          const line = this.roadSpeechLines[Math.floor(Math.random() * this.roadSpeechLines.length)]
+          this.roadNpcSpeech.setText(line)
+        }
+      })
+    }
+    // Position text initially
+    if (this.roadNpcSpeech && this.roadNpcSprite) {
+      this.roadNpcSpeech.x = this.roadNpcSprite.x
+      this.roadNpcSpeech.y = this.roadNpcSprite.y - 40
+    }
+  }
+
+  private animateNpcAlong(points: { x: number; y: number }[]) {
+    if (!this.roadNpcSprite) return
+    if (this.roadNpcTween) {
+      this.roadNpcTween.kill()
+      this.roadNpcTween = null
+    }
+    // Move NPC to start
+    this.roadNpcSprite.x = points[0].x
+    this.roadNpcSprite.y = points[0].y
+    
+    const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
+    let total = 0
+    for (let i = 1; i < points.length; i++) total += distance(points[i - 1], points[i])
+    const speed = 40 // pixels per second (relative to container local space)
+    const duration = Math.max(0.5, total / speed)
+
+    this.roadNpcTween = gsap.to(this.roadNpcSprite, {
+      duration,
+      ease: 'none',
+      repeat: -1,
+      yoyo: true,
+      motionPath: {
+        path: points,
+        curviness: 0,
+        autoRotate: false
+      },
+      onUpdate: () => {
+        if (this.roadNpcSpeech && this.roadNpcSprite) {
+          this.roadNpcSpeech.x = this.roadNpcSprite.x
+          this.roadNpcSpeech.y = this.roadNpcSprite.y - 40
+        }
+      }
+    })
+  }
+
+  private teardownRoadNpc() {
+    if (this.roadNpcTween) {
+      this.roadNpcTween.kill()
+      this.roadNpcTween = null
+    }
+    if (this.roadSpeechTimer) {
+      this.roadSpeechTimer.remove(false)
+      this.roadSpeechTimer = null
+    }
+    if (this.roadNpcSpeech) {
+      this.roadNpcSpeech.destroy()
+      this.roadNpcSpeech = null
+    }
+    if (this.roadNpcSprite) {
+      this.roadNpcSprite.destroy()
+      this.roadNpcSprite = null
+    }
+  }
+  
+  private showWorkshopPopup() {
+    const width = this.scale.width
+    const height = this.scale.height
+    
+    // Set dialog open flag
+    this.dialogOpen = true
+    
+    // Create fullscreen overlay
+    const overlay = this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.7)
+    overlay.setInteractive() // Block clicks underneath
+    overlay.setDepth(20000)
+    
+    // Create dialog container
+    const dialogContainer = this.add.container(width/2, height/2)
+    dialogContainer.setDepth(20001)
+    
+    // Dialog background
+    const dialogWidth = 1100
+    const dialogHeight = 700
+    const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x1a1a2e, 1)
+    dialogBg.setStrokeStyle(3, 0x16213e, 0.8)
+    dialogContainer.add(dialogBg)
+    
+    // Title bar
+    const titleBar = this.add.rectangle(0, -dialogHeight/2 + 30, dialogWidth, 60, 0x0f3460, 1)
+    dialogContainer.add(titleBar)
+    
+    // Title text - optimized for performance
+    const titleText = this.add.text(0, -dialogHeight/2 + 30, '🎓 University Career Development Pathways', {
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      fontFamily: 'Arial, sans-serif'
+    }).setOrigin(0.5)
+    dialogContainer.add(titleText)
+    
+    // Close button
+    const closeBtn = this.add.rectangle(dialogWidth/2 - 30, -dialogHeight/2 + 30, 40, 40, 0xe94560, 1)
+    closeBtn.setInteractive({ useHandCursor: true })
+    closeBtn.setStrokeStyle(2, 0xffffff, 0.5)
+    dialogContainer.add(closeBtn)
+    
+    const closeText = this.add.text(dialogWidth/2 - 30, -dialogHeight/2 + 30, '✕', {
+      fontSize: '20px',
+      color: '#ffffff'
+    }).setOrigin(0.5)
+    dialogContainer.add(closeText)
+    
+    // Create viewport mask for scrollable area
+    const viewportWidth = dialogWidth - 60
+    const viewportHeight = dialogHeight - 120
+    const viewportY = 10
+    
+    // Create mask for viewport
+    const maskShape = this.make.graphics({})
+    maskShape.fillStyle(0xffffff)
+    maskShape.fillRect(
+      width/2 - viewportWidth/2,
+      height/2 - viewportHeight/2 + viewportY,
+      viewportWidth,
+      viewportHeight
+    )
+    
+    // Content area for workshops (draggable)
+    const contentContainer = this.add.container(0, viewportY)
+    contentContainer.setMask(maskShape.createGeometryMask())
+    dialogContainer.add(contentContainer)
+    
+    // Inner container for dragging
+    const workshopContainer = this.add.container(0, 0)
+    contentContainer.add(workshopContainer)
+    
+    // Workshop data - unified path with 3 starting points
+    const workshops = [
+      // Three starting points - Stream A, B, C
+      { id: 'A1', stream: 'A', title: 'Communication Skills', desc: 'Verbal & written mastery', level: 'Beginner', x: -450, y: -200, connections: ['COMMON'] },
+      { id: 'B1', stream: 'B', title: 'Emotional Intelligence', desc: 'Self & social awareness', level: 'Beginner', x: -450, y: 0, connections: ['COMMON'] },
+      { id: 'C1', stream: 'C', title: 'Critical Thinking', desc: 'Analytical skills', level: 'Beginner', x: -450, y: 200, connections: ['COMMON'] },
+      
+      // Common second workshop that all streams pass through
+      { id: 'COMMON', title: 'Leadership Foundations', desc: 'Core leadership principles', level: 'Intermediate', x: -200, y: 0, connections: ['A2', 'B2', 'C2'] },
+      
+      // Three different third workshops (streams diverge again)
+      { id: 'A2', stream: 'A', title: 'Public Speaking', desc: 'Presentation confidence', level: 'Intermediate', x: 50, y: -200, connections: ['F1', 'F2'] },
+      { id: 'B2', stream: 'B', title: 'Team Building', desc: 'Creating high-performing teams', level: 'Intermediate', x: 50, y: 0, connections: ['F2', 'F3'] },
+      { id: 'C2', stream: 'C', title: 'Strategic Planning', desc: 'Long-term vision', level: 'Intermediate', x: 50, y: 200, connections: ['F3', 'F4'] },
+      
+      // Advanced workshops (multiple paths converge)
+      { id: 'F1', title: 'Executive Communication', desc: 'C-suite messaging', level: 'Advanced', x: 300, y: -250, connections: ['E'] },
+      { id: 'F2', title: 'Change Management', desc: 'Leading transformation', level: 'Advanced', x: 300, y: -100, connections: ['E'] },
+      { id: 'F3', title: 'Innovation Leadership', desc: 'Driving creativity', level: 'Advanced', x: 300, y: 100, connections: ['E'] },
+      { id: 'F4', title: 'Business Strategy', desc: 'Market positioning', level: 'Advanced', x: 300, y: 250, connections: ['E'] },
+      
+      // Ultimate goal - all paths lead here
+      { id: 'E', title: 'Executive Leadership', desc: 'Complete leadership mastery', level: 'Master', x: 550, y: 0, connections: [] }
+    ]
+    
+    // Draw connection lines first (so they appear behind cards)
+    const lines = this.add.graphics()
+    lines.lineStyle(2, 0x533483, 0.4)
+    
+    // Create a map for quick workshop lookup by ID
+    const workshopMap = new Map()
+    workshops.forEach(w => workshopMap.set(w.id, w))
+    
+    // Draw connections
+    workshops.forEach(workshop => {
+      workshop.connections?.forEach(targetId => {
+        const target = workshopMap.get(targetId)
+        if (target) {
+          lines.beginPath()
+          lines.moveTo(workshop.x + 100, workshop.y)
+          
+          // Add simple angled connections
+          if (workshop.y !== target.y) {
+            const midX = (workshop.x + target.x) / 2
+            // Create angled line path
+            lines.lineTo(midX, workshop.y)
+            lines.lineTo(midX, target.y)
+            lines.lineTo(target.x - 100, target.y)
+          } else {
+            lines.lineTo(target.x - 100, target.y)
+          }
+          lines.strokePath()
+        }
+      })
+    })
+    
+    workshopContainer.add(lines)
+    
+    // Stream colors for visual distinction
+    const streamColors: { [key: string]: number } = {
+      'A': 0x3498db,  // Blue
+      'B': 0x2ecc71,  // Green  
+      'C': 0xe74c3c   // Red
+    }
+    
+    // Level indicator colors
+    const levelColors: { [key: string]: number } = {
+      'Beginner': 0x10b981,
+      'Intermediate': 0xf59e0b,
+      'Advanced': 0xef4444,
+      'Master': 0x9b59b6
+    }
+    
+    // Create workshop cards
+    workshops.forEach(workshop => {
+      const x = workshop.x
+      const y = workshop.y
+      
+      // Workshop card
+      const cardWidth = 180
+      const cardHeight = 80
+      const streamColor = workshop.stream ? streamColors[workshop.stream] : 0x7c3aed
+      const cardBg = this.add.rectangle(x, y, cardWidth, cardHeight, 0x16213e, 1)
+      
+      // Add stream-colored border for starting workshops
+      if (workshop.stream) {
+        cardBg.setStrokeStyle(3, streamColor, 0.8)
+      } else {
+        cardBg.setStrokeStyle(2, 0x533483, 0.5)
+      }
+      
+      cardBg.setInteractive({ useHandCursor: true })
+      workshopContainer.add(cardBg)
+      
+      // Stream indicator OUTSIDE the box for starting workshops
+      if (workshop.stream) {
+        // Create circular stream indicator above the card
+        const streamCircle = this.add.circle(x - cardWidth/2 - 20, y, 18, streamColor)
+        workshopContainer.add(streamCircle)
+        
+        const streamLabel = this.add.text(x - cardWidth/2 - 20, y, workshop.stream, {
+          fontSize: '16px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+          fontFamily: 'Arial, sans-serif'
+        }).setOrigin(0.5, 0.5)
+        workshopContainer.add(streamLabel)
+      }
+      
+      // Level indicator color bar on left side
+      const indicatorX = x - cardWidth/2 + 6
+      const levelIndicator = this.add.rectangle(indicatorX, y, 8, cardHeight - 10, levelColors[workshop.level], 1)
+      workshopContainer.add(levelIndicator)
+      
+      // Workshop title - optimized
+      const titleText = this.add.text(indicatorX + 15, y - 10, workshop.title, {
+        fontSize: '14px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+        fontFamily: 'Arial, sans-serif'
+      }).setOrigin(0, 0.5)
+      workshopContainer.add(titleText)
+      
+      // Workshop description - optimized
+      const descText = this.add.text(indicatorX + 15, y + 12, workshop.desc, {
+        fontSize: '11px',
+        color: '#9ca3af',
+        wordWrap: { width: cardWidth - 40 },
+        fontFamily: 'Arial, sans-serif'
+      }).setOrigin(0, 0.5)
+      workshopContainer.add(descText)
+      
+      // Hover effects
+      cardBg.on('pointerover', () => {
+        cardBg.setFillStyle(0x1e293b, 1)
+        cardBg.setScale(1.05)
+        titleText.setScale(1.05)
+        descText.setScale(1.05)
+      })
+      
+      cardBg.on('pointerout', () => {
+        cardBg.setFillStyle(0x16213e, 1)
+        cardBg.setScale(1)
+        titleText.setScale(1)
+        descText.setScale(1)
+      })
+    })
+    
+    // Implement drag-and-drop for the workshop container
+    let isDragging = false
+    let dragStartX = 0
+    let dragStartY = 0
+    let containerStartX = 0
+    let containerStartY = 0
+    
+    // Create invisible interaction area
+    const interactionArea = this.add.rectangle(0, viewportY, viewportWidth, viewportHeight, 0x000000, 0.01)
+    interactionArea.setInteractive()
+    dialogContainer.add(interactionArea)
+    
+    interactionArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      isDragging = true
+      dragStartX = pointer.x
+      dragStartY = pointer.y
+      containerStartX = workshopContainer.x
+      containerStartY = workshopContainer.y
+    })
+    
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (isDragging) {
+        const dx = pointer.x - dragStartX
+        const dy = pointer.y - dragStartY
+        
+        // Update container position with boundaries
+        workshopContainer.x = Phaser.Math.Clamp(containerStartX + dx, -800, 400)
+        workshopContainer.y = Phaser.Math.Clamp(containerStartY + dy, -400, 400)
+      }
+    })
+    
+    this.input.on('pointerup', () => {
+      isDragging = false
+    })
+    
+    // Mouse wheel zoom for workshop view
+    interactionArea.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
+      const currentScale = workshopContainer.scale
+      const newScale = Phaser.Math.Clamp(currentScale - deltaY * 0.001, 0.5, 1.5)
+      workshopContainer.setScale(newScale)
+    })
+    
+    // Close button functionality
+    closeBtn.on('pointerover', () => {
+      closeBtn.setFillStyle(0xc0392b)
+      closeBtn.setScale(1.1)
+      closeText.setScale(1.1)
+    })
+    
+    closeBtn.on('pointerout', () => {
+      closeBtn.setFillStyle(0xe94560)
+      closeBtn.setScale(1)
+      closeText.setScale(1)
+    })
+    
+    closeBtn.on('pointerdown', () => {
+      this.dialogOpen = false
+      overlay.destroy()
+      dialogContainer.destroy(true)
+    })
   }
   
   private deleteBuilding(tileData: TileData) {
