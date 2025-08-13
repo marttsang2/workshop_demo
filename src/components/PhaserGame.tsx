@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Phaser from 'phaser'
 import IsometricScene from '../game/scenes/IsometricScene'
+import BuildingMenu from './BuildingMenu'
 
 const PhaserGame: React.FC = () => {
   const gameRef = useRef<Phaser.Game | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const [currentScene, setCurrentScene] = useState<IsometricScene | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) return
@@ -30,6 +32,12 @@ const PhaserGame: React.FC = () => {
         antialias: true,
         pixelArt: false,
         roundPixels: false  // Enable for sharper text
+      },
+      callbacks: {
+        postBoot: (game) => {
+          const scene = game.scene.getScene('IsometricScene') as IsometricScene
+          setCurrentScene(scene)
+        }
       }
     }
 
@@ -43,7 +51,37 @@ const PhaserGame: React.FC = () => {
     }
   }, [])
 
-  return <div ref={containerRef} className="phaser-container" />
+  const handleBuildingSelect = (buildingKey: string) => {
+    if (currentScene) {
+      currentScene.selectBuildingFromReact(buildingKey)
+    }
+  }
+
+  const handleCategoryChange = (category: string) => {
+    if (currentScene) {
+      currentScene.setCategoryFromReact(category)
+    }
+  }
+
+  const handleDeleteMode = () => {
+    if (currentScene) {
+      currentScene.setDeleteModeFromReact()
+    }
+  }
+
+  return (
+    <>
+      <div ref={containerRef} className="phaser-container" />
+      {currentScene && (
+        <BuildingMenu
+          onBuildingSelect={handleBuildingSelect}
+          onCategoryChange={handleCategoryChange}
+          onDeleteMode={handleDeleteMode}
+          gameScene={currentScene}
+        />
+      )}
+    </>
+  )
 }
 
 
