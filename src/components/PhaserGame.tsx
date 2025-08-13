@@ -25,6 +25,11 @@ const PhaserGame: React.FC = () => {
           gravity: { x: 0, y: 0 },
           debug: false
         }
+      },
+      render: {
+        antialias: true,
+        pixelArt: false,
+        roundPixels: false  // Enable for sharper text
       }
     }
 
