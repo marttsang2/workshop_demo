@@ -1,4 +1,8 @@
 import Phaser from 'phaser'
+import { gsap } from 'gsap'
+import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
+
+gsap.registerPlugin(MotionPathPlugin)
 
 interface TileData {
   x: number
@@ -39,6 +43,22 @@ export default class IsometricScene extends Phaser.Scene {
   private containerStartY = 0
   private dialogOpen = false
 
+  // NPC on roads (GSAP-driven)
+  private roadNpcSprite: Phaser.GameObjects.Image | null = null
+  private roadNpcSpeech: Phaser.GameObjects.Text | null = null
+  private roadNpcTween: gsap.core.Tween | null = null
+  private roadSpeechTimer: Phaser.Time.TimerEvent | null = null
+  private readonly roadSpeechLines: string[] = [
+    'Looking for career workshops!',
+    'Can\'t wait for the next seminar!',
+    'Where\'s the university center?',
+    'Need to update my resume...',
+    'Heading to my internship!',
+    'Anyone joining the workshop?',
+    'Career fair today!',
+    'On my way to class!'
+  ]
+
   constructor() {
     super({ key: 'IsometricScene' })
   }
@@ -69,6 +89,11 @@ export default class IsometricScene extends Phaser.Scene {
     // Load grass road tiles
     for (let i = 1; i <= 9; i++) {
       this.load.image(`grass_road_${i}`, `GiantCityBuilder/Tiles/GrassRoad_Tile${i}.png`)
+    }
+    
+    // Load simple NPC sprites (static)
+    for (let i = 1; i <= 5; i++) {
+      this.load.image(`npc_${i}`, `NPC/${i}.gif`)
     }
     
     // Load signature buildings (all 2x2) from public folder
@@ -924,6 +949,8 @@ export default class IsometricScene extends Phaser.Scene {
     this.tiles[gridY][gridX].groundType = this.selectedBuilding
     
     // Roads don't occupy the tile for buildings
+    // Update road NPC path whenever roads change
+    this.updateRoadNpcPath()
   }
 
   private getBuildingSize(buildingKey: string): BuildingSize {
@@ -1019,6 +1046,223 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Clear selection after initialization
     this.selectedBuilding = null
+  }
+
+  // --- Road + NPC helpers ---
+  private isRoadGround(groundType: string | undefined): boolean {
+    if (!groundType) return false
+    return groundType.includes('road_') || groundType.includes('grass_road_')
+  }
+
+  private updateRoadNpcPath() {
+    if (!this.gridContainer) return
+    // Collect all road tiles
+    const roadPositions: { x: number; y: number }[] = []
+    for (let y = 0; y < this.gridSize; y++) {
+      for (let x = 0; x < this.gridSize; x++) {
+        if (this.isRoadGround(this.tiles[y][x].groundType)) {
+          roadPositions.push({ x, y })
+        }
+      }
+    }
+    if (roadPositions.length === 0) {
+      this.teardownRoadNpc()
+      return
+    }
+
+    // Build adjacency and find largest connected component
+    const key = (x: number, y: number) => `${x},${y}`
+    const roadSet = new Set(roadPositions.map(p => key(p.x, p.y)))
+    const visited = new Set<string>()
+    let largestComponent: { x: number; y: number }[] = []
+
+    const neighbors = (x: number, y: number) => {
+      const out: { x: number; y: number }[] = []
+      const dirs = [
+        { dx: 1, dy: 0 },
+        { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 },
+        { dx: 0, dy: -1 }
+      ]
+      for (const d of dirs) {
+        const nx = x + d.dx
+        const ny = y + d.dy
+        if (nx >= 0 && nx < this.gridSize && ny >= 0 && ny < this.gridSize) {
+          if (roadSet.has(key(nx, ny))) out.push({ x: nx, y: ny })
+        }
+      }
+      return out
+    }
+
+    for (const p of roadPositions) {
+      const k = key(p.x, p.y)
+      if (visited.has(k)) continue
+      const comp: { x: number; y: number }[] = []
+      const q: { x: number; y: number }[] = [p]
+      visited.add(k)
+      while (q.length) {
+        const cur = q.shift()!
+        comp.push(cur)
+        for (const nb of neighbors(cur.x, cur.y)) {
+          const nk = key(nb.x, nb.y)
+          if (!visited.has(nk)) {
+            visited.add(nk)
+            q.push(nb)
+          }
+        }
+      }
+      if (comp.length > largestComponent.length) largestComponent = comp
+    }
+
+    if (largestComponent.length < 2) {
+      // Not enough path to walk meaningfully
+      this.teardownRoadNpc()
+      return
+    }
+
+    // Build a simple path across the component: pick random start, BFS to farthest node
+    const start = largestComponent[Math.floor(Math.random() * largestComponent.length)]
+    const pred = new Map<string, string>()
+    const dist = new Map<string, number>()
+    const q: { x: number; y: number }[] = [start]
+    dist.set(key(start.x, start.y), 0)
+    let far = start
+    while (q.length) {
+      const cur = q.shift()!
+      const curK = key(cur.x, cur.y)
+      const curD = dist.get(curK) ?? 0
+      for (const nb of neighbors(cur.x, cur.y)) {
+        const nk = key(nb.x, nb.y)
+        if (!dist.has(nk)) {
+          dist.set(nk, curD + 1)
+          pred.set(nk, curK)
+          q.push(nb)
+          if ((dist.get(nk) ?? 0) > (dist.get(key(far.x, far.y)) ?? 0)) far = nb
+        }
+      }
+    }
+
+    // Reconstruct path from far back to start
+    const path: { x: number; y: number }[] = []
+    let curK = key(far.x, far.y)
+    while (true) {
+      const [cx, cy] = curK.split(',').map(Number)
+      path.push({ x: cx, y: cy })
+      const pk = pred.get(curK)
+      if (!pk) break
+      curK = pk
+    }
+    path.reverse()
+
+    if (path.length < 2) {
+      this.teardownRoadNpc()
+      return
+    }
+
+    // Convert path tiles to container-local pixel points
+    const points = path.map(p => {
+      const t = this.tiles[p.y][p.x].tile
+      // Slight upward offset so NPC sits visually on the road
+      return { x: t.x, y: t.y - 10 }
+    })
+
+    this.ensureRoadNpc(points[0])
+    this.animateNpcAlong(points)
+  }
+
+  private ensureRoadNpc(startPoint: { x: number; y: number }) {
+    if (!this.gridContainer) return
+    if (!this.roadNpcSprite) {
+      const npcIndex = 1 + Math.floor(Math.random() * 5)
+      this.roadNpcSprite = this.add.image(startPoint.x, startPoint.y, `npc_${npcIndex}`)
+      this.roadNpcSprite.setOrigin(0.5, 0.85)
+      this.gridContainer.add(this.roadNpcSprite)
+      // Match tile scale
+      const baseTile = this.tiles[0][0].tile
+      this.roadNpcSprite.setScale(baseTile.scaleX)
+      // Keep on top of grid elements
+      this.roadNpcSprite.setDepth(999999)
+      this.roadNpcSprite.setData('gridDepth', 999999)
+    }
+    if (!this.roadNpcSpeech) {
+      this.roadNpcSpeech = this.add.text(startPoint.x, startPoint.y - 40, '', {
+        fontSize: '12px',
+        color: '#ffffff'
+      }).setOrigin(0.5, 1)
+      this.gridContainer.add(this.roadNpcSpeech)
+      this.roadNpcSpeech.setDepth(1000000)
+      this.roadNpcSpeech.setData('gridDepth', 1000000)
+    }
+    if (!this.roadSpeechTimer) {
+      this.roadSpeechTimer = this.time.addEvent({
+        delay: Math.random() * 5000 + 1000,
+        loop: true,
+        callback: () => {
+          if (!this.roadNpcSpeech) return
+          const line = this.roadSpeechLines[Math.floor(Math.random() * this.roadSpeechLines.length)]
+          this.roadNpcSpeech.setText(line)
+        }
+      })
+    }
+    // Position text initially
+    if (this.roadNpcSpeech && this.roadNpcSprite) {
+      this.roadNpcSpeech.x = this.roadNpcSprite.x
+      this.roadNpcSpeech.y = this.roadNpcSprite.y - 40
+    }
+  }
+
+  private animateNpcAlong(points: { x: number; y: number }[]) {
+    if (!this.roadNpcSprite) return
+    if (this.roadNpcTween) {
+      this.roadNpcTween.kill()
+      this.roadNpcTween = null
+    }
+    // Move NPC to start
+    this.roadNpcSprite.x = points[0].x
+    this.roadNpcSprite.y = points[0].y
+    
+    const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
+    let total = 0
+    for (let i = 1; i < points.length; i++) total += distance(points[i - 1], points[i])
+    const speed = 40 // pixels per second (relative to container local space)
+    const duration = Math.max(0.5, total / speed)
+
+    this.roadNpcTween = gsap.to(this.roadNpcSprite, {
+      duration,
+      ease: 'none',
+      repeat: -1,
+      yoyo: true,
+      motionPath: {
+        path: points,
+        curviness: 0,
+        autoRotate: false
+      },
+      onUpdate: () => {
+        if (this.roadNpcSpeech && this.roadNpcSprite) {
+          this.roadNpcSpeech.x = this.roadNpcSprite.x
+          this.roadNpcSpeech.y = this.roadNpcSprite.y - 40
+        }
+      }
+    })
+  }
+
+  private teardownRoadNpc() {
+    if (this.roadNpcTween) {
+      this.roadNpcTween.kill()
+      this.roadNpcTween = null
+    }
+    if (this.roadSpeechTimer) {
+      this.roadSpeechTimer.remove(false)
+      this.roadSpeechTimer = null
+    }
+    if (this.roadNpcSpeech) {
+      this.roadNpcSpeech.destroy()
+      this.roadNpcSpeech = null
+    }
+    if (this.roadNpcSprite) {
+      this.roadNpcSprite.destroy()
+      this.roadNpcSprite = null
+    }
   }
   
   private showWorkshopPopup() {
