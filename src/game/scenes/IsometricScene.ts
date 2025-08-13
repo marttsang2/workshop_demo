@@ -961,7 +961,7 @@ export default class IsometricScene extends Phaser.Scene {
         this.buildingPreview.setVisible(true)
       }
 
-      // Handle tile highlighting
+      // Handle tile highlighting: only show when placing a building
       if (!this.isDragging && this.gridContainer && this.highlightGraphics) {
         // Convert pointer position to local container space, accounting for scale
         const localX = (pointer.x - this.gridContainer.x) / this.gridContainer.scale
@@ -971,53 +971,39 @@ export default class IsometricScene extends Phaser.Scene {
         
         this.highlightGraphics.clear()
         
-        if (tile) {
-          // Delete mode highlighting
-          if (this.currentCategory === 'delete') {
-            if (tile.occupied && tile.building) {
-              // Show red highlight for deletable buildings
-              this.highlightGraphics.lineStyle(3, 0xff0000, 1)
-              const tileSprite = tile.tile
-              const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
-              const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
-              this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
-            }
-          } else if (this.selectedBuilding) {
-            const isGroundTile = this.selectedBuilding.includes('road_') || this.selectedBuilding.includes('grass_road_')
+        if (tile && this.selectedBuilding) {
+          const isGroundTile = this.selectedBuilding.includes('road_') || this.selectedBuilding.includes('grass_road_')
           
-            if (isGroundTile) {
-              // Ground tiles always show green highlight (they replace grass)
-              this.highlightGraphics.lineStyle(3, 0x00ff00, 1)
-              const tileSprite = tile.tile
-              const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
-              const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
-              this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
-            } else {
-              // Buildings need to check for space
-              const buildingSize = this.getBuildingSize(this.selectedBuilding)
-              const canPlace = this.canPlaceBuilding(tile.x, tile.y, buildingSize)
-              
-              // Set color based on whether we can place
-              this.highlightGraphics.lineStyle(3, canPlace ? 0x00ff00 : 0xff0000, 1)
-              
-              // Draw highlight for all tiles the building will occupy
-              for (let dy = 0; dy < buildingSize.height; dy++) {
-                for (let dx = 0; dx < buildingSize.width; dx++) {
-                  const highlightY = tile.y + dy
-                  const highlightX = tile.x + dx
-                  
-                  if (highlightX < this.gridSize && highlightY < this.gridSize) {
-                    const highlightTile = this.tiles[highlightY][highlightX].tile
-                    const worldX = this.gridContainer.x + highlightTile.x * this.gridContainer.scale
-                    const worldY = this.gridContainer.y + highlightTile.y * this.gridContainer.scale
-                    
-                    this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
-                  }
+          if (isGroundTile) {
+            // Ground tiles: green highlight on the hovered tile
+            this.highlightGraphics.lineStyle(3, 0x00ff00, 1)
+            const tileSprite = tile.tile
+            const worldX = this.gridContainer.x + tileSprite.x * this.gridContainer.scale
+            const worldY = this.gridContainer.y + tileSprite.y * this.gridContainer.scale
+            this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
+          } else {
+            // Buildings: highlight area based on size and placement validity
+            const buildingSize = this.getBuildingSize(this.selectedBuilding)
+            const canPlace = this.canPlaceBuilding(tile.x, tile.y, buildingSize)
+            this.highlightGraphics.lineStyle(3, canPlace ? 0x00ff00 : 0xff0000, 1)
+            
+            for (let dy = 0; dy < buildingSize.height; dy++) {
+              for (let dx = 0; dx < buildingSize.width; dx++) {
+                const highlightY = tile.y + dy
+                const highlightX = tile.x + dx
+                
+                if (highlightX < this.gridSize && highlightY < this.gridSize) {
+                  const highlightTile = this.tiles[highlightY][highlightX].tile
+                  const worldX = this.gridContainer.x + highlightTile.x * this.gridContainer.scale
+                  const worldY = this.gridContainer.y + highlightTile.y * this.gridContainer.scale
+                  this.drawTileHighlight(worldX, worldY - 10 * this.gridContainer.scale, this.gridContainer.scale)
                 }
               }
             }
           }
         }
+        
+        return
       }
     })
     
@@ -1259,7 +1245,9 @@ export default class IsometricScene extends Phaser.Scene {
     }
     
     // Clear the building preview after successful placement
+
     this.clearBuildingPreview()
+    if (this.highlightGraphics) this.highlightGraphics.clear()
   }
 
   private resortGridChildrenByDepth() {
@@ -1308,8 +1296,10 @@ export default class IsometricScene extends Phaser.Scene {
     // Update road NPC path whenever roads change
     this.updateRoadNpcPath()
     
-    // Clear the building preview after successful placement
+    // Cancel placement after a single successful placement
+    this.selectedBuilding = null
     this.clearBuildingPreview()
+    if (this.highlightGraphics) this.highlightGraphics.clear()
   }
 
   private getBuildingSize(buildingKey: string): BuildingSize {
@@ -1707,8 +1697,8 @@ export default class IsometricScene extends Phaser.Scene {
     // Set dialog open flag
     this.dialogOpen = true
     
-    // Create fullscreen overlay
-    const overlay = this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.7)
+    // Create fullscreen overlay (modern, subtle) - increased opacity
+    const overlay = this.add.rectangle(width/2, height/2, width, height, 0x0b0f14, 0.8)
     overlay.setInteractive() // Block clicks underneath
     overlay.setDepth(20000)
     
@@ -1716,36 +1706,31 @@ export default class IsometricScene extends Phaser.Scene {
     const dialogContainer = this.add.container(width/2, height/2)
     dialogContainer.setDepth(20001)
     
-    // Dialog background
+    // Dialog background (glass-like panel)
     const dialogWidth = 1100
     const dialogHeight = 700
-    const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x1a1a2e, 1)
-    dialogBg.setStrokeStyle(3, 0x16213e, 0.8)
+    const dialogBg = this.add.graphics()
+    dialogBg.fillStyle(0xffffff, 0.2)
+    dialogBg.fillRoundedRect(-dialogWidth/2, -dialogHeight/2, dialogWidth, dialogHeight, 16)
+    dialogBg.lineStyle(2, 0xffffff, 0.25)
+    dialogBg.strokeRoundedRect(-dialogWidth/2, -dialogHeight/2, dialogWidth, dialogHeight, 16)
     dialogContainer.add(dialogBg)
     
-    // Title bar
-    const titleBar = this.add.rectangle(0, -dialogHeight/2 + 30, dialogWidth, 60, 0x0f3460, 1)
-    dialogContainer.add(titleBar)
-    
-    // Title text - optimized for performance
-    const titleText = this.add.text(0, -dialogHeight/2 + 30, '🎓 University Career Development Pathways', {
-      fontSize: '24px',
-      color: '#ffffff',
+    // Title text (modern)
+    const titleText = this.add.text(0, -dialogHeight/2 + 32, 'Career Development Pathways', {
+      fontSize: '28px',
+      color: '#e5e7eb',
       fontStyle: 'bold',
       fontFamily: 'Arial, sans-serif'
     }).setOrigin(0.5)
     dialogContainer.add(titleText)
     
-    // Close button
-    const closeBtn = this.add.rectangle(dialogWidth/2 - 30, -dialogHeight/2 + 30, 40, 40, 0xe94560, 1)
-    closeBtn.setInteractive({ useHandCursor: true })
-    closeBtn.setStrokeStyle(2, 0xffffff, 0.5)
-    dialogContainer.add(closeBtn)
-    
-    const closeText = this.add.text(dialogWidth/2 - 30, -dialogHeight/2 + 30, '✕', {
+    // Close button (minimal)
+    const closeText = this.add.text(dialogWidth/2 - 24, -dialogHeight/2 + 24, '✕', {
       fontSize: '20px',
-      color: '#ffffff'
+      color: '#e5e7eb'
     }).setOrigin(0.5)
+    closeText.setInteractive({ useHandCursor: true })
     dialogContainer.add(closeText)
     
     // Create viewport mask for scrollable area
@@ -1799,7 +1784,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Draw connection lines first (so they appear behind cards)
     const lines = this.add.graphics()
-    lines.lineStyle(2, 0x533483, 0.4)
+    lines.lineStyle(2, 0x94a3b8, 0.35)
     
     // Create a map for quick workshop lookup by ID
     const workshopMap = new Map()
@@ -1830,13 +1815,12 @@ export default class IsometricScene extends Phaser.Scene {
     
     workshopContainer.add(lines)
     
-    // Stream colors for visual distinction
+    // Stream colors (modern accent palette)
     const streamColors: { [key: string]: number } = {
-      'A': 0x3498db,  // Blue
-      'B': 0x2ecc71,  // Green  
-      'C': 0xe74c3c   // Red
+      'A': 0x60a5fa,  // Blue
+      'B': 0x34d399,  // Green  
+      'C': 0xf87171   // Red
     }
-    
     
     // Create workshop cards
     workshops.forEach(workshop => {
@@ -1869,14 +1853,21 @@ export default class IsometricScene extends Phaser.Scene {
       } else {
         cardBg.setStrokeStyle(2, 0x533483, isUnlocked ? 0.5 : 0.2)
       }
+
       
       if (isSelectable) {
         cardBg.setInteractive({ useHandCursor: true })
       }
       workshopContainer.add(cardBg)
       
-      // Stream indicator OUTSIDE the box for starting workshops
+      // Stream indicator removed; use colored card border only
+      
+      // Workshop title (modern) with highlighted stream name
+      let streamNameText: Phaser.GameObjects.Text | null = null
+      const contentLeftX = x - cardWidth/2 + 15
+      let titleX = contentLeftX
       if (workshop.stream) {
+
         // Create circular stream indicator above the card
         const streamCircle = this.add.circle(x - cardWidth/2 - 20, y, 18, streamColor, isUnlocked ? 1 : 0.3)
         workshopContainer.add(streamCircle)
@@ -1884,10 +1875,12 @@ export default class IsometricScene extends Phaser.Scene {
         const streamLabel = this.add.text(x - cardWidth/2 - 20, y, workshop.stream, {
           fontSize: '16px',
           color: isUnlocked ? '#ffffff' : '#666666',
+
           fontStyle: 'bold',
           fontFamily: 'Arial, sans-serif'
-        }).setOrigin(0.5, 0.5)
-        workshopContainer.add(streamLabel)
+        }).setOrigin(0, 0.5)
+        workshopContainer.add(streamNameText)
+        titleX = titleX + streamNameText.width + 6
       }
       
       // Remove level indicator - no longer needed
@@ -1915,6 +1908,7 @@ export default class IsometricScene extends Phaser.Scene {
       const titleText = this.add.text(indicatorX + 10, y - 10, workshop.title, {
         fontSize: '14px',
         color: isUnlocked ? '#ffffff' : '#666666',
+
         fontStyle: 'bold',
         fontFamily: 'Arial, sans-serif'
       }).setOrigin(0, 0.5)
@@ -1950,6 +1944,7 @@ export default class IsometricScene extends Phaser.Scene {
           this.showWorkshopDetails(workshop, overlay, dialogContainer)
         })
       }
+
     })
     
     // Implement drag-and-drop for the workshop container
@@ -1992,22 +1987,16 @@ export default class IsometricScene extends Phaser.Scene {
       workshopContainer.setScale(newScale)
     })
     
-    // Close button functionality
-    closeBtn.on('pointerover', () => {
-      closeBtn.setFillStyle(0xc0392b)
-      closeBtn.setScale(1.1)
-      closeText.setScale(1.1)
-      closeBtn.setY(-dialogHeight/2 + 35)
+    // Close button functionality (text only)
+    closeText.on('pointerover', () => {
+      closeText.setScale(1.15)
     })
     
-    closeBtn.on('pointerout', () => {
-      closeBtn.setFillStyle(0xe94560)
-      closeBtn.setScale(1)
+    closeText.on('pointerout', () => {
       closeText.setScale(1)
-      closeBtn.setY(-dialogHeight/2 + 35)
     })
     
-    closeBtn.on('pointerdown', () => {
+    closeText.on('pointerdown', () => {
       this.dialogOpen = false
       overlay.destroy()
       dialogContainer.destroy(true)
