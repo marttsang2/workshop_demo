@@ -1578,8 +1578,8 @@ export default class IsometricScene extends Phaser.Scene {
     // Set dialog open flag
     this.dialogOpen = true
     
-    // Create fullscreen overlay
-    const overlay = this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.7)
+    // Create fullscreen overlay (modern, subtle) - increased opacity
+    const overlay = this.add.rectangle(width/2, height/2, width, height, 0x0b0f14, 0.8)
     overlay.setInteractive() // Block clicks underneath
     overlay.setDepth(20000)
     
@@ -1587,36 +1587,31 @@ export default class IsometricScene extends Phaser.Scene {
     const dialogContainer = this.add.container(width/2, height/2)
     dialogContainer.setDepth(20001)
     
-    // Dialog background
+    // Dialog background (glass-like panel)
     const dialogWidth = 1100
     const dialogHeight = 700
-    const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x1a1a2e, 1)
-    dialogBg.setStrokeStyle(3, 0x16213e, 0.8)
+    const dialogBg = this.add.graphics()
+    dialogBg.fillStyle(0xffffff, 0.2)
+    dialogBg.fillRoundedRect(-dialogWidth/2, -dialogHeight/2, dialogWidth, dialogHeight, 16)
+    dialogBg.lineStyle(2, 0xffffff, 0.25)
+    dialogBg.strokeRoundedRect(-dialogWidth/2, -dialogHeight/2, dialogWidth, dialogHeight, 16)
     dialogContainer.add(dialogBg)
     
-    // Title bar
-    const titleBar = this.add.rectangle(0, -dialogHeight/2 + 30, dialogWidth, 60, 0x0f3460, 1)
-    dialogContainer.add(titleBar)
-    
-    // Title text - optimized for performance
-    const titleText = this.add.text(0, -dialogHeight/2 + 30, '🎓 University Career Development Pathways', {
-      fontSize: '24px',
-      color: '#ffffff',
+    // Title text (modern)
+    const titleText = this.add.text(0, -dialogHeight/2 + 32, 'Career Development Pathways', {
+      fontSize: '28px',
+      color: '#e5e7eb',
       fontStyle: 'bold',
       fontFamily: 'Arial, sans-serif'
     }).setOrigin(0.5)
     dialogContainer.add(titleText)
     
-    // Close button
-    const closeBtn = this.add.rectangle(dialogWidth/2 - 30, -dialogHeight/2 + 30, 40, 40, 0xe94560, 1)
-    closeBtn.setInteractive({ useHandCursor: true })
-    closeBtn.setStrokeStyle(2, 0xffffff, 0.5)
-    dialogContainer.add(closeBtn)
-    
-    const closeText = this.add.text(dialogWidth/2 - 30, -dialogHeight/2 + 30, '✕', {
+    // Close button (minimal)
+    const closeText = this.add.text(dialogWidth/2 - 24, -dialogHeight/2 + 24, '✕', {
       fontSize: '20px',
-      color: '#ffffff'
+      color: '#e5e7eb'
     }).setOrigin(0.5)
+    closeText.setInteractive({ useHandCursor: true })
     dialogContainer.add(closeText)
     
     // Create viewport mask for scrollable area
@@ -1670,7 +1665,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Draw connection lines first (so they appear behind cards)
     const lines = this.add.graphics()
-    lines.lineStyle(2, 0x533483, 0.4)
+    lines.lineStyle(2, 0x94a3b8, 0.35)
     
     // Create a map for quick workshop lookup by ID
     const workshopMap = new Map()
@@ -1701,19 +1696,19 @@ export default class IsometricScene extends Phaser.Scene {
     
     workshopContainer.add(lines)
     
-    // Stream colors for visual distinction
+    // Stream colors (modern accent palette)
     const streamColors: { [key: string]: number } = {
-      'A': 0x3498db,  // Blue
-      'B': 0x2ecc71,  // Green  
-      'C': 0xe74c3c   // Red
+      'A': 0x60a5fa,  // Blue
+      'B': 0x34d399,  // Green  
+      'C': 0xf87171   // Red
     }
     
-    // Level indicator colors
+    // Level indicator colors (modern)
     const levelColors: { [key: string]: number } = {
-      'Beginner': 0x10b981,
+      'Beginner': 0x22c55e,
       'Intermediate': 0xf59e0b,
       'Advanced': 0xef4444,
-      'Master': 0x9b59b6
+      'Master': 0x8b5cf6
     }
     
     // Create workshop cards
@@ -1721,73 +1716,72 @@ export default class IsometricScene extends Phaser.Scene {
       const x = workshop.x
       const y = workshop.y
       
-      // Workshop card
-      const cardWidth = 180
-      const cardHeight = 80
-      const streamColor = workshop.stream ? streamColors[workshop.stream] : 0x7c3aed
-      const cardBg = this.add.rectangle(x, y, cardWidth, cardHeight, 0x16213e, 1)
+      // Workshop card (modern)
+      const cardWidth = 200
+      const cardHeight = 84
+      const levelColor = levelColors[workshop.level]
+      const cardBg = this.add.rectangle(x, y, cardWidth, cardHeight, 0x0f172a, 0.95)
       
-      // Add stream-colored border for starting workshops
-      if (workshop.stream) {
-        cardBg.setStrokeStyle(3, streamColor, 0.8)
-      } else {
-        cardBg.setStrokeStyle(2, 0x533483, 0.5)
-      }
+      // Use border color to display LEVEL (instead of a rectangle)
+      cardBg.setStrokeStyle(3, levelColor, 1)
       
       cardBg.setInteractive({ useHandCursor: true })
       workshopContainer.add(cardBg)
       
-      // Stream indicator OUTSIDE the box for starting workshops
+      // Stream indicator removed; use colored card border only
+      
+      // Workshop title (modern) with highlighted stream name
+      let streamNameText: Phaser.GameObjects.Text | null = null
+      const contentLeftX = x - cardWidth/2 + 15
+      let titleX = contentLeftX
       if (workshop.stream) {
-        // Create circular stream indicator above the card
-        const streamCircle = this.add.circle(x - cardWidth/2 - 20, y, 18, streamColor)
-        workshopContainer.add(streamCircle)
-        
-        const streamLabel = this.add.text(x - cardWidth/2 - 20, y, workshop.stream, {
-          fontSize: '16px',
-          color: '#ffffff',
+        const streamColor = streamColors[workshop.stream]
+        const streamHex = '#' + streamColor.toString(16).padStart(6, '0')
+        streamNameText = this.add.text(titleX, y - 10, workshop.stream, {
+          fontSize: '14px',
+          color: streamHex,
           fontStyle: 'bold',
           fontFamily: 'Arial, sans-serif'
-        }).setOrigin(0.5, 0.5)
-        workshopContainer.add(streamLabel)
+        }).setOrigin(0, 0.5)
+        workshopContainer.add(streamNameText)
+        titleX = titleX + streamNameText.width + 6
       }
-      
-      // Level indicator color bar on left side
-      const indicatorX = x - cardWidth/2 + 6
-      const levelIndicator = this.add.rectangle(indicatorX, y, 8, cardHeight - 10, levelColors[workshop.level], 1)
-      workshopContainer.add(levelIndicator)
-      
-      // Workshop title - optimized
-      const titleText = this.add.text(indicatorX + 15, y - 10, workshop.title, {
+      const titleText = this.add.text(titleX, y - 10, workshop.title, {
         fontSize: '14px',
-        color: '#ffffff',
+        color: '#e5e7eb',
         fontStyle: 'bold',
         fontFamily: 'Arial, sans-serif'
       }).setOrigin(0, 0.5)
       workshopContainer.add(titleText)
       
-      // Workshop description - optimized
-      const descText = this.add.text(indicatorX + 15, y + 12, workshop.desc, {
-        fontSize: '11px',
-        color: '#9ca3af',
+      // Workshop description (modern)
+      const descText = this.add.text(contentLeftX, y + 12, workshop.desc, {
+        fontSize: '12px',
+        color: '#94a3b8',
         wordWrap: { width: cardWidth - 40 },
         fontFamily: 'Arial, sans-serif'
       }).setOrigin(0, 0.5)
       workshopContainer.add(descText)
       
-      // Hover effects
+      // Hover effects (modern subtle) - keep colored border consistent
       cardBg.on('pointerover', () => {
-        cardBg.setFillStyle(0x1e293b, 1)
-        cardBg.setScale(1.05)
-        titleText.setScale(1.05)
-        descText.setScale(1.05)
+        cardBg.setFillStyle(0x111827, 1)
+        cardBg.setScale(1.04)
+        titleText.setScale(1.02)
+        descText.setScale(1.02)
+        if (streamNameText) streamNameText.setScale(1.02)
+        // restore border on hover (level color)
+        cardBg.setStrokeStyle(3, levelColor, 1)
       })
       
       cardBg.on('pointerout', () => {
-        cardBg.setFillStyle(0x16213e, 1)
+        cardBg.setFillStyle(0x0f172a, 0.95)
         cardBg.setScale(1)
         titleText.setScale(1)
         descText.setScale(1)
+        if (streamNameText) streamNameText.setScale(1)
+        // restore border when leaving (level color)
+        cardBg.setStrokeStyle(3, levelColor, 1)
       })
     })
     
@@ -1833,22 +1827,16 @@ export default class IsometricScene extends Phaser.Scene {
       workshopContainer.setScale(newScale)
     })
     
-    // Close button functionality
-    closeBtn.on('pointerover', () => {
-      closeBtn.setFillStyle(0xc0392b)
-      closeBtn.setScale(1.1)
-      closeText.setScale(1.1)
-      closeBtn.setY(-dialogHeight/2 + 35)
+    // Close button functionality (text only)
+    closeText.on('pointerover', () => {
+      closeText.setScale(1.15)
     })
     
-    closeBtn.on('pointerout', () => {
-      closeBtn.setFillStyle(0xe94560)
-      closeBtn.setScale(1)
+    closeText.on('pointerout', () => {
       closeText.setScale(1)
-      closeBtn.setY(-dialogHeight/2 + 35)
     })
     
-    closeBtn.on('pointerdown', () => {
+    closeText.on('pointerdown', () => {
       this.dialogOpen = false
       overlay.destroy()
       dialogContainer.destroy(true)
