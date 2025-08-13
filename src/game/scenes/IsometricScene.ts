@@ -1863,9 +1863,7 @@ export default class IsometricScene extends Phaser.Scene {
       // Stream indicator removed; use colored card border only
       
       // Workshop title (modern) with highlighted stream name
-      let streamNameText: Phaser.GameObjects.Text | null = null
-      const contentLeftX = x - cardWidth/2 + 15
-      let titleX = contentLeftX
+
       if (workshop.stream) {
 
         // Create circular stream indicator above the card
@@ -1879,8 +1877,7 @@ export default class IsometricScene extends Phaser.Scene {
           fontStyle: 'bold',
           fontFamily: 'Arial, sans-serif'
         }).setOrigin(0, 0.5)
-        workshopContainer.add(streamNameText)
-        titleX = titleX + streamNameText.width + 6
+        workshopContainer.add(streamLabel)
       }
       
       // Remove level indicator - no longer needed
