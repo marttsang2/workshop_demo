@@ -488,8 +488,8 @@ export default class IsometricScene extends Phaser.Scene {
   private createIsometricGrid() {
     for (let row = 0; row < this.gridSize; row++) {
       for (let col = 0; col < this.gridSize; col++) {
-        const isoX = (col - row) * (this.tileWidth / 2)
-        const isoY = (col + row) * (this.tileHeight / 2)
+        const isoX = (col - row) * (this.tileWidth / 2) + col * 2
+        const isoY = (col + row) * (this.tileHeight / 2) - row * 2
 
         const tile = this.add.image(isoX, isoY, 'ground_tile')
         tile.setOrigin(0.5, 0.5)
@@ -500,7 +500,7 @@ export default class IsometricScene extends Phaser.Scene {
         // Depth calculation for isometric view
         // Objects further down and to the right should appear on top
         // Use row as primary sort, column as secondary
-        const depth = row * 1000 + col * 10
+        const depth = row * 1000 + col * 8
         tile.setDepth(depth)
         
         tile.setInteractive()
@@ -763,7 +763,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Get average position (center of all occupied tiles)
     const localX = totalX / tileCount
-    const localY = totalY / tileCount
+    const localY = totalY / tileCount - 16
     
     // Calculate world position
     const worldX = this.gridContainer.x + localX * this.gridContainer.scale
