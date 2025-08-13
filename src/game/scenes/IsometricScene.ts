@@ -481,7 +481,7 @@ export default class IsometricScene extends Phaser.Scene {
           x: x,
           y: y,
           occupied: false,
-          tile: null as any,
+          tile: null as unknown as Phaser.GameObjects.Image,
           groundType: 'grass'
         }
       }
@@ -504,6 +504,7 @@ export default class IsometricScene extends Phaser.Scene {
         // Ensures consistent ordering independent of interaction/click order
         const depth = (row + col) * 1000 + col
         tile.setDepth(depth)
+        tile.setData('gridDepth', depth)
         
         tile.setInteractive()
         tile.setData('gridX', col)
@@ -691,7 +692,7 @@ export default class IsometricScene extends Phaser.Scene {
     })
     
     // Mouse wheel zoom
-    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: any[], _deltaX: number, deltaY: number) => {
+    this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
       // Don't handle input if a dialog is open
       if (this.dialogOpen) return
       
@@ -829,6 +830,7 @@ export default class IsometricScene extends Phaser.Scene {
     // Offset by +100 so buildings render above ground tiles at same grid location
     const depth = (baseX + baseY) * 1000 + baseX + 100
     building.setDepth(depth)
+    building.setData('gridDepth', depth)
     // Reorder container children to respect updated depths
     this.resortGridChildrenByDepth()
     
@@ -851,7 +853,18 @@ export default class IsometricScene extends Phaser.Scene {
   private resortGridChildrenByDepth() {
     if (!this.gridContainer) return
     const children = this.gridContainer.list as Phaser.GameObjects.GameObject[]
-    children.sort((a, b) => a.depth - b.depth)
+    const sorted = [...children].sort((a, b) => {
+      const ad = (a as any).getData ? (a as any).getData('gridDepth') ?? 0 : 0
+      const bd = (b as any).getData ? (b as any).getData('gridDepth') ?? 0 : 0
+      return ad - bd
+    })
+    // Bring each child to top in ascending order to match sorted order
+    sorted.forEach(child => {
+      // @ts-expect-error Phaser typing
+      if ((this.gridContainer as any).bringToTop) {
+        ;(this.gridContainer as any).bringToTop(child)
+      }
+    })
   }
   
   private placeGroundTile(tileData: TileData) {
@@ -1236,7 +1249,7 @@ export default class IsometricScene extends Phaser.Scene {
     })
     
     // Mouse wheel zoom for workshop view
-    interactionArea.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: any[], _deltaX: number, deltaY: number) => {
+    interactionArea.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
       const currentScale = workshopContainer.scale
       const newScale = Phaser.Math.Clamp(currentScale - deltaY * 0.001, 0.5, 1.5)
       workshopContainer.setScale(newScale)
