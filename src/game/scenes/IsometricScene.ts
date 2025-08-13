@@ -80,14 +80,13 @@ export default class IsometricScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBackgroundColor('#5DADE2')
     
-    // Create and position container FIRST
-    const centerX = this.cameras.main.width / 2
-    const centerY = this.cameras.main.height / 2
-    this.gridContainer = this.add.container(centerX, centerY)
+    // Create container; we'll center it after tiles are created based on bounds
+    this.gridContainer = this.add.container(0, 0)
     this.highlightGraphics = this.add.graphics()
     
     this.initializeGrid()
     this.createIsometricGrid()
+    this.centerContainerOnGrid()
     this.setupInteraction()
     this.createUI()
     
@@ -100,6 +99,31 @@ export default class IsometricScene extends Phaser.Scene {
     this.resize()
   }
   
+  private centerContainerOnGrid() {
+    if (!this.gridContainer) return
+    const children = this.gridContainer.list as Phaser.GameObjects.GameObject[]
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    children.forEach(obj => {
+      const dm = (obj as unknown as { data?: Phaser.Data.DataManager }).data
+      if (dm && dm.has('gridX') && dm.has('gridY')) {
+        const pos = obj as unknown as { x: number; y: number }
+        if (pos.x < minX) minX = pos.x
+        if (pos.y < minY) minY = pos.y
+        if (pos.x > maxX) maxX = pos.x
+        if (pos.y > maxY) maxY = pos.y
+      }
+    })
+    if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return
+    const gridCenterX = (minX + maxX) / 2
+    const gridCenterY = (minY + maxY) / 2
+    const screenCenterX = this.cameras.main.width / 2
+    const screenCenterY = this.cameras.main.height / 2
+    this.gridContainer.setPosition(screenCenterX - gridCenterX, screenCenterY - gridCenterY)
+  }
+
 
   private resize() {
     const width = this.scale.width
@@ -112,7 +136,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Center grid if not being dragged
     if (!this.isDragging && this.gridContainer) {
-      this.gridContainer.setPosition(width / 2, height / 2)
+      this.centerContainerOnGrid()
     }
   }
 
