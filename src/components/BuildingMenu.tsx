@@ -1,14 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import * as ScrollArea from '@radix-ui/react-scroll-area'
-import * as Tabs from '@radix-ui/react-tabs'
 import PhaserTextureDisplay from './PhaserTextureDisplay'
 
 interface BuildingCategory {
   id: string
   name: string
-  icon: string
   description: string
   color: string
 }
@@ -24,40 +21,42 @@ interface Building {
   isUnlocked?: boolean
   isPlaced?: boolean
   requiredWorkshop?: string
-  icon?: string
 }
 
 interface BuildingMenuProps {
   onBuildingSelect: (buildingKey: string) => void
   onCategoryChange: (category: string) => void
   onDeleteMode: () => void
+  onPathwayMenuOpen: () => void
   gameScene: any
+  refreshTrigger?: number
 }
 
 const BuildingMenu: React.FC<BuildingMenuProps> = ({ 
   onBuildingSelect, 
   onCategoryChange, 
   onDeleteMode,
-  gameScene 
+  onPathwayMenuOpen,
+  gameScene,
+  refreshTrigger
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [showBuildingPanel, setShowBuildingPanel] = useState(false)
   const [buildings, setBuildings] = useState<Building[]>([])
 
   const categories: BuildingCategory[] = [
-    { id: 'apartments', name: 'Homes', icon: '🏠', description: 'Cozy living spaces', color: 'from-pink-500 to-rose-500' },
-    { id: 'signature', name: 'Specials', icon: '🏛️', description: 'Unique buildings', color: 'from-purple-500 to-indigo-500' },
-    { id: 'roads', name: 'Paths', icon: '🛤️', description: 'Connect your city', color: 'from-teal-500 to-cyan-500' },
-    { id: 'delete', name: 'Remove', icon: '🗑️', description: 'Clean up space', color: 'from-red-500 to-pink-500' }
+    { id: 'apartments', name: 'Houses', description: 'Cozy homes for everyone!', color: 'from-pink-200 via-pink-100 to-rose-200' },
+    { id: 'signature', name: 'Special', description: 'Amazing unique buildings!', color: 'from-purple-200 via-purple-100 to-indigo-200' },
+    { id: 'pathways', name: 'Paths', description: 'Connect your island!', color: 'from-green-200 via-green-100 to-emerald-200' },
+    { id: 'delete', name: 'Remove', description: 'Clean up your space!', color: 'from-red-200 via-red-100 to-rose-200' }
   ]
 
   const apartmentBuildings = () => {
     const colors = ['Blue', 'Green', 'Red', 'Yellow', 'Pink', 'Grey']
     const sizes = [
-      { size: '1x1', level: '1', label: 'Small' },
-      { size: '1x1', level: '2', label: 'Medium' },
-      { size: '1x1', level: '3', label: 'Tall' },
-      { size: '2x2', level: '1', label: 'Large' }
+      { size: '1x1', level: 'Level1', label: 'Small' },
+      { size: '1x1', level: 'Level2', label: 'Medium' },
+      { size: '1x1', level: 'Level3', label: 'Tall' }
     ]
     
     const buildings: Building[] = []
@@ -78,31 +77,18 @@ const BuildingMenu: React.FC<BuildingMenuProps> = ({
   }
 
   const signatureBuildings: Building[] = [
-    { key: 'signature_townhall', name: 'Town Hall', icon: '🏛️', description: 'City Government', requiredWorkshop: 'COMMON', category: 'signature' },
-    { key: 'signature_library', name: 'Library', icon: '📚', description: 'Knowledge Center', requiredWorkshop: 'A1', category: 'signature' },
-    { key: 'signature_football_american', name: 'Football Stadium', icon: '🏈', description: 'American Football', requiredWorkshop: 'A2', category: 'signature' },
-    { key: 'signature_football_soccer', name: 'Soccer Stadium', icon: '⚽', description: 'Soccer/Football', requiredWorkshop: 'B2', category: 'signature' },
-    { key: 'signature_cricket', name: 'Cricket Stadium', icon: '🏏', description: 'Cricket Field', requiredWorkshop: 'C2', category: 'signature' },
-    { key: 'signature_baseball', name: 'Baseball Stadium', icon: '⚾', description: 'Baseball Field', requiredWorkshop: 'F1', category: 'signature' },
-    { key: 'signature_fire_station', name: 'Fire Station', icon: '🚒', description: 'Emergency Services', requiredWorkshop: 'F2', category: 'signature' },
-    { key: 'signature_police_station', name: 'Police Station', icon: '🚔', description: 'Law Enforcement', requiredWorkshop: 'F3', category: 'signature' },
-    { key: 'signature_hospital', name: 'Hospital', icon: '🏥', description: 'Medical Center', requiredWorkshop: 'F4', category: 'signature' },
-    { key: 'signature_emergency_room', name: 'Emergency Room', icon: '🚑', description: 'Emergency Care', requiredWorkshop: 'E', category: 'signature' }
+    { key: 'signature_townhall', name: 'Town Hall', description: 'The heart of your town!', requiredWorkshop: 'A1', category: 'signature' },
+    { key: 'signature_library', name: 'Library', description: 'A place for learning!', requiredWorkshop: 'B1', category: 'signature' },
+    { key: 'signature_football_american', name: 'Football Stadium', description: 'Go team!', requiredWorkshop: 'C1', category: 'signature' },
+    { key: 'signature_football_soccer', name: 'Soccer Stadium', description: 'Goal!', requiredWorkshop: 'COMMON', category: 'signature' },
+    { key: 'signature_cricket', name: 'Cricket Stadium', description: 'Howzat!', requiredWorkshop: 'A3', category: 'signature' },
+    { key: 'signature_baseball', name: 'Baseball Stadium', description: 'Home run!', requiredWorkshop: 'B3', category: 'signature' },
+    { key: 'signature_fire_station', name: 'Fire Station', description: 'Heroes in red!', requiredWorkshop: 'C3', category: 'signature' },
+    { key: 'signature_police_station', name: 'Police Station', description: 'Keeping us safe!', requiredWorkshop: 'A3', category: 'signature' },
+    { key: 'signature_hospital', name: 'Hospital', description: 'Healing hearts!', requiredWorkshop: 'B3', category: 'signature' },
+    { key: 'signature_emergency_room', name: 'Emergency Room', description: 'Quick care!', requiredWorkshop: 'C3', category: 'signature' }
   ]
 
-  const roadBuildings: Building[] = [
-    { key: 'road_straight_horizontal', name: 'Horizontal Road', icon: '━', description: 'Straight horizontal', category: 'roads', isUnlocked: true },
-    { key: 'road_straight_vertical', name: 'Vertical Road', icon: '┃', description: 'Straight vertical', category: 'roads', isUnlocked: true },
-    { key: 'road_corner_NE', name: 'NE Corner', icon: '┗', description: 'North-East turn', category: 'roads', isUnlocked: true },
-    { key: 'road_corner_NW', name: 'NW Corner', icon: '┛', description: 'North-West turn', category: 'roads', isUnlocked: true },
-    { key: 'road_corner_SE', name: 'SE Corner', icon: '┏', description: 'South-East turn', category: 'roads', isUnlocked: true },
-    { key: 'road_corner_SW', name: 'SW Corner', icon: '┓', description: 'South-West turn', category: 'roads', isUnlocked: true },
-    { key: 'road_T_N', name: 'T-Junction N', icon: '┻', description: 'T-junction North', category: 'roads', isUnlocked: true },
-    { key: 'road_T_S', name: 'T-Junction S', icon: '┳', description: 'T-junction South', category: 'roads', isUnlocked: true },
-    { key: 'road_T_E', name: 'T-Junction E', icon: '┣', description: 'T-junction East', category: 'roads', isUnlocked: true },
-    { key: 'road_T_W', name: 'T-Junction W', icon: '┫', description: 'T-junction West', category: 'roads', isUnlocked: true },
-    { key: 'road_cross', name: 'Crossroad', icon: '╋', description: 'Four-way intersection', category: 'roads', isUnlocked: true }
-  ]
 
   useEffect(() => {
     if (selectedCategory === 'apartments') {
@@ -114,15 +100,18 @@ const BuildingMenu: React.FC<BuildingMenuProps> = ({
         isPlaced: gameScene?.placedSignatureBuildings?.has(building.key) || false
       }))
       setBuildings(updatedBuildings)
-    } else if (selectedCategory === 'roads') {
-      setBuildings(roadBuildings)
     }
-  }, [selectedCategory, gameScene])
+  }, [selectedCategory, gameScene, refreshTrigger])
 
   const handleCategoryClick = (categoryId: string) => {
     if (categoryId === 'delete') {
       onDeleteMode()
       setSelectedCategory('delete')
+      setShowBuildingPanel(false)
+      console.log('Delete mode activated') // Debug log
+    } else if (categoryId === 'pathways') {
+      onPathwayMenuOpen()
+      setSelectedCategory('')
       setShowBuildingPanel(false)
     } else {
       setSelectedCategory(categoryId)
@@ -133,7 +122,7 @@ const BuildingMenu: React.FC<BuildingMenuProps> = ({
 
   const handleBuildingSelect = (building: Building) => {
     if (building.category === 'signature' && building.isPlaced) {
-      return
+      return // Prevent selecting already placed special buildings
     }
     if (building.category === 'signature' && !building.isUnlocked) {
       return
@@ -142,260 +131,244 @@ const BuildingMenu: React.FC<BuildingMenuProps> = ({
     setShowBuildingPanel(false)
   }
 
-  const getColorForBuilding = (color: string): string => {
-    const colorMap: { [key: string]: string } = {
-      'Blue': 'from-blue-400 to-blue-600',
-      'Green': 'from-green-400 to-green-600',
-      'Red': 'from-red-400 to-red-600',
-      'Yellow': 'from-yellow-400 to-yellow-600',
-      'Pink': 'from-pink-400 to-pink-600',
-      'Grey': 'from-gray-400 to-gray-600'
-    }
-    return colorMap[color] || 'from-gray-400 to-gray-600'
-  }
 
   const getTextureScale = (building: Building): number => {
-    if (building.size === '2x2') return 0.08
-    if (building.category === 'signature') return 0.08
-    if (building.category === 'roads') return 0.15
-    return 0.12
+    if (building.category === 'signature') return 0.06
+    if (building.category === 'roads') return 0.08
+    return 0.07
+  }
+
+  const getCategoryTitle = () => {
+    switch (selectedCategory) {
+      case 'apartments': return 'House Catalog'
+      case 'signature': return 'Special Buildings'
+      default: return 'Building Menu'
+    }
   }
 
   return (
-    <Tooltip.Provider delayDuration={200}>
-      {/* Bottom Menu Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 p-4 pointer-events-none">
-        <div className="max-w-2xl mx-auto pointer-events-auto">
-          <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-slate-700/50 p-4">
-            <div className="flex justify-center items-center gap-3">
-              {categories.map((category) => (
-                <Tooltip.Root key={category.id}>
-                  <Tooltip.Trigger asChild>
-                    <button
-                      onClick={() => handleCategoryClick(category.id)}
-                      className={`
-                        group relative bg-gradient-to-br ${category.color} 
-                        rounded-xl p-3 transition-all duration-300 transform hover:scale-110 
-                        hover:shadow-xl active:scale-95 ${selectedCategory === category.id ? 'ring-4 ring-white/50 scale-110' : ''}
-                      `}
-                    >
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="text-2xl filter drop-shadow-md">{category.icon}</span>
-                        <span className="text-xs font-bold text-white drop-shadow-md">{category.name}</span>
-                      </div>
-                      
-                      <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-                        <div className="absolute inset-0 bg-gradient-to-t from-white/0 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                      </div>
-                    </button>
-                  </Tooltip.Trigger>
-                  <Tooltip.Portal>
-                    <Tooltip.Content
-                      className="bg-black/90 text-white text-xs px-3 py-2 rounded-lg shadow-xl"
-                      sideOffset={5}
-                    >
-                      {category.description}
-                      <Tooltip.Arrow className="fill-black/90" />
-                    </Tooltip.Content>
-                  </Tooltip.Portal>
-                </Tooltip.Root>
-              ))}
+    <Tooltip.Provider delayDuration={400}>
+      {/* Bottom Menu Bar - Animal Crossing Style */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 p-6 pointer-events-none">
+        <div className="max-w-3xl mx-auto pointer-events-auto">
+          {/* AC-style bubble panel */}
+          <div className="relative">
+            {/* Soft cloud-like glow */}
+            <div className="absolute inset-0 bg-gradient-to-t from-blue-100/60 to-sky-100/60 rounded-[2.5rem] blur-2xl"></div>
+            
+            {/* Main bubble panel */}
+            <div className="relative bg-gradient-to-br from-sky-50/98 via-blue-50/98 to-indigo-50/98 backdrop-blur-lg rounded-[2.5rem] border-4 border-white/80 shadow-2xl shadow-blue-200/30">
+              {/* Cute bubble dots at top */}
+              <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 flex gap-2">
+                <div className="w-3 h-3 bg-sky-200 rounded-full shadow-sm"></div>
+                <div className="w-4 h-4 bg-blue-200 rounded-full shadow-sm"></div>
+                <div className="w-3 h-3 bg-indigo-200 rounded-full shadow-sm"></div>
+              </div>
+              
+              <div className="p-8">
+                <div className="flex justify-center items-center gap-6">
+                  {categories.map((category, index) => (
+                    <Tooltip.Root key={category.id}>
+                      <Tooltip.Trigger asChild>
+                        <button
+                          onClick={() => handleCategoryClick(category.id)}
+                          className={`
+                            group relative overflow-hidden font-bold
+                            ${selectedCategory === category.id 
+                              ? `bg-gradient-to-br ${category.color} scale-110 shadow-xl shadow-blue-200/50 border-4 border-white` 
+                              : 'bg-gradient-to-br from-white/90 via-sky-50/90 to-blue-50/90 hover:from-sky-100/90 hover:via-blue-100/90 hover:to-indigo-100/90 hover:scale-105 border-4 border-white/70'
+                            }
+                            rounded-[1.5rem] p-5 transition-all duration-700 ease-out transform hover:rotate-2
+                            shadow-lg hover:shadow-xl
+                            min-w-[90px] min-h-[90px]
+                          `}
+                          style={{
+                            animationDelay: `${index * 200}ms`,
+                            fontFamily: '"Comic Sans MS", "Marker Felt", cursive'
+                          }}
+                        >
+                          {/* AC-style inner highlight */}
+                          <div className="absolute top-2 left-2 right-2 h-3 bg-white/40 rounded-full"></div>
+                          
+                          <div className="flex flex-col items-center gap-2 relative z-10">
+                            <span className="text-lg font-bold text-slate-700 drop-shadow-sm">
+                              {category.name}
+                            </span>
+                          </div>
+                          
+                          {/* Soft selected glow */}
+                          {selectedCategory === category.id && (
+                            <div className="absolute inset-0 bg-white/30 rounded-[1.5rem] animate-pulse"></div>
+                          )}
+                        </button>
+                      </Tooltip.Trigger>
+                      <Tooltip.Portal>
+                        <Tooltip.Content
+                          className="bg-gradient-to-br from-white/95 to-sky-50/95 text-slate-700 text-base px-6 py-4 rounded-[1.5rem] shadow-xl border-4 border-white/80 backdrop-blur-sm"
+                          sideOffset={20}
+                          style={{ fontFamily: '"Comic Sans MS", "Marker Felt", cursive' }}
+                        >
+                          <div className="font-bold">{category.description}</div>
+                          <Tooltip.Arrow className="fill-white/95" />
+                        </Tooltip.Content>
+                      </Tooltip.Portal>
+                    </Tooltip.Root>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Building Selection Dialog */}
-      <Dialog.Root open={showBuildingPanel} onOpenChange={setShowBuildingPanel}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50" />
-          <Dialog.Content className="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] max-w-4xl w-[90vw] max-h-[85vh] bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl shadow-2xl border border-slate-700/50 z-50 overflow-hidden">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 relative">
-              <Dialog.Close asChild>
-                <button
-                  className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl transition-colors"
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
-              </Dialog.Close>
-              <Dialog.Title className="text-2xl font-bold text-white flex items-center gap-2">
-                {selectedCategory === 'apartments' && '🏠 Cozy Homes Collection'}
-                {selectedCategory === 'roads' && '🛤️ Pathways & Routes'}
-                {selectedCategory === 'signature' && '🏛️ Special Buildings'}
-              </Dialog.Title>
-              <Dialog.Description className="text-white/80 mt-1">
-                Choose a building to place on the map
-              </Dialog.Description>
-            </div>
-            
-            {/* Content with Tabs for different views */}
-            <Tabs.Root defaultValue="grid" className="flex flex-col h-full">
-              <Tabs.List className="flex gap-2 p-4 pb-0">
-                <Tabs.Trigger
-                  value="grid"
-                  className="px-4 py-2 bg-slate-700/50 rounded-lg text-white/70 hover:bg-slate-700 hover:text-white data-[state=active]:bg-blue-600 data-[state=active]:text-white transition-all"
-                >
-                  Grid View
-                </Tabs.Trigger>
-                <Tabs.Trigger
-                  value="list"
-                  className="px-4 py-2 bg-slate-700/50 rounded-lg text-white/70 hover:bg-slate-700 hover:text-white data-[state=active]:bg-blue-600 data-[state=active]:text-white transition-all"
-                >
-                  List View
-                </Tabs.Trigger>
-              </Tabs.List>
-
-              {/* Grid View */}
-              <Tabs.Content value="grid" className="flex-1 p-4">
-                <ScrollArea.Root className="w-full h-[50vh]">
-                  <ScrollArea.Viewport className="w-full h-full">
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4 p-2">
-                      {buildings.map((building) => {
-                        const isDisabled = (building.category === 'signature' && (!building.isUnlocked || building.isPlaced))
-                        
-                        return (
-                          <Tooltip.Root key={building.key}>
-                            <Tooltip.Trigger asChild>
-                              <button
-                                onClick={() => !isDisabled && handleBuildingSelect(building)}
-                                disabled={isDisabled}
-                                className={`
-                                  relative group bg-gradient-to-br 
-                                  ${building.color ? getColorForBuilding(building.color) : 'from-slate-700 to-slate-800'}
-                                  ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95 cursor-pointer'}
-                                  rounded-xl p-3 transition-all duration-300 shadow-lg hover:shadow-xl
-                                  ${building.isPlaced ? 'ring-2 ring-green-500' : ''}
-                                  min-h-[140px] flex flex-col items-center justify-center
-                                `}
-                              >
-                                {/* Status badges */}
-                                {building.isPlaced && (
-                                  <div className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                                    ✓
-                                  </div>
-                                )}
-                                {building.category === 'signature' && !building.isUnlocked && (
-                                  <div className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                                    🔒
-                                  </div>
-                                )}
-                                
-                                {/* Building texture preview */}
-                                <div className="w-16 h-16 flex items-center justify-center mb-2">
-                                  <PhaserTextureDisplay
-                                    textureKey={building.key}
-                                    gameScene={gameScene}
-                                    width={64}
-                                    height={64}
-                                    scale={getTextureScale(building)}
-                                    className="pixelated"
-                                  />
-                                </div>
-                                
-                                {/* Building name */}
-                                <div className="text-white font-semibold text-xs text-center px-1">
-                                  {building.name}
-                                </div>
-
-                                <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl pointer-events-none" />
-                              </button>
-                            </Tooltip.Trigger>
-                            <Tooltip.Portal>
-                              <Tooltip.Content
-                                className="bg-black/90 text-white text-xs px-3 py-2 rounded-lg shadow-xl max-w-xs"
-                                sideOffset={5}
-                              >
-                                <div className="font-bold">{building.name}</div>
-                                {building.description && (
-                                  <div className="mt-1 text-white/80">{building.description}</div>
-                                )}
-                                {building.category === 'signature' && building.requiredWorkshop && building.requiredWorkshop !== 'COMMON' && (
-                                  <div className="mt-1 text-yellow-400">
-                                    Requires: Workshop {building.requiredWorkshop}
-                                  </div>
-                                )}
-                                <Tooltip.Arrow className="fill-black/90" />
-                              </Tooltip.Content>
-                            </Tooltip.Portal>
-                          </Tooltip.Root>
-                        )
-                      })}
+      {/* Compact Building Selection Panel - Bottom Aligned */}
+      {showBuildingPanel && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pb-40 pointer-events-none">
+          <div className="max-w-6xl mx-auto pointer-events-auto">
+            {/* Cloud-like glow container */}
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-t from-sky-100/70 via-blue-100/70 to-indigo-100/70 rounded-[2rem] blur-2xl"></div>
+              
+              {/* Main AC-style panel */}
+              <div className="relative bg-gradient-to-br from-sky-50/98 via-blue-50/98 to-white/98 backdrop-blur-lg rounded-[2rem] border-4 border-white/90 shadow-2xl overflow-hidden max-h-[50vh]">
+                {/* AC-style header */}
+                <div className="relative bg-gradient-to-r from-amber-100 via-yellow-100 to-orange-100 border-b-4 border-white/90">
+                  <div className="relative p-6 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-sky-200 via-blue-200 to-indigo-200 rounded-[1rem] flex items-center justify-center shadow-lg border-3 border-white/80">
+                        <div className="w-6 h-6 bg-white/60 rounded-full"></div>
+                      </div>
+                      <div>
+                        <h2 
+                          className="text-2xl font-bold text-slate-700 drop-shadow-sm"
+                          style={{ fontFamily: '"Comic Sans MS", "Marker Felt", cursive' }}
+                        >
+                          {getCategoryTitle()}
+                        </h2>
+                      </div>
                     </div>
-                  </ScrollArea.Viewport>
-                  <ScrollArea.Scrollbar
-                    className="flex select-none touch-none p-0.5 bg-slate-700/30 transition-colors duration-[160ms] ease-out hover:bg-slate-700/50 data-[orientation=vertical]:w-2.5 data-[orientation=horizontal]:flex-col data-[orientation=horizontal]:h-2.5"
-                    orientation="vertical"
-                  >
-                    <ScrollArea.Thumb className="flex-1 bg-slate-500 rounded-[10px] relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]" />
-                  </ScrollArea.Scrollbar>
-                </ScrollArea.Root>
-              </Tabs.Content>
+                    
+                    <button
+                      onClick={() => setShowBuildingPanel(false)}
+                      className="text-slate-600 hover:text-slate-800 text-2xl w-8 h-8 flex items-center justify-center rounded-full bg-white/80 border-3 border-white hover:border-sky-200 hover:bg-sky-50/80 hover:scale-110 transition-all duration-300 shadow-lg"
+                      style={{ fontFamily: '"Comic Sans MS", "Marker Felt", cursive' }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                
+                {/* AC-style grid content */}
+                <div className="p-6">
+                  <ScrollArea.Root className="w-full h-[35vh]">
+                    <ScrollArea.Viewport className="w-full h-full">
+                      <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-4 auto-rows-fr">
+                        {buildings.map((building, index) => {
+                          const isDisabled = (building.category === 'signature' && (!building.isUnlocked || building.isPlaced))
+                          
+                          return (
+                            <div key={building.key} className="flex flex-col items-center h-full">
+                              <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                  <button
+                                    onClick={() => !isDisabled && handleBuildingSelect(building)}
+                                    disabled={isDisabled}
+                                    className={`
+                                      relative group overflow-hidden
+                                      ${isDisabled 
+                                        ? 'opacity-50 cursor-not-allowed bg-gradient-to-br from-gray-100 via-gray-50 to-slate-100' 
+                                        : 'cursor-pointer hover:scale-110 active:scale-95 bg-gradient-to-br from-white/95 via-sky-50/95 to-blue-50/95 hover:from-blue-50/95 hover:via-indigo-50/95 hover:to-sky-50/95'
+                                      }
+                                      rounded-[1rem] transition-all duration-500 ease-out shadow-md hover:shadow-lg
+                                      ${building.isPlaced ? 'ring-3 ring-green-200 shadow-green-100/60' : ''}
+                                      w-full aspect-square flex flex-col items-center justify-center p-3
+                                      border-3 border-white/80 hover:border-sky-200/80
+                                      backdrop-blur-sm transform hover:rotate-2
+                                    `}
+                                    style={{
+                                      animationDelay: `${index * 50}ms`,
+                                      fontFamily: '"Comic Sans MS", "Marker Felt", cursive'
+                                    }}
+                                  >
+                                    {/* AC-style top highlight */}
+                                    <div className="absolute top-1 left-2 right-2 h-2 bg-white/50 rounded-full"></div>
+                                    
+                                    {/* Building preview with transparent background */}
+                                    <div className="w-full flex-1 flex items-center justify-center mb-2">
+                                      <PhaserTextureDisplay
+                                        textureKey={building.key}
+                                        gameScene={gameScene}
+                                        width={60}
+                                        height={60}
+                                        scale={getTextureScale(building)}
+                                        className="pixelated filter drop-shadow-sm"
+                                      />
+                                    </div>
+                                    
+                                    {/* Building name with AC-style text */}
+                                    <div className="text-center w-full">
+                                      <div className="text-slate-700 font-bold text-xs leading-tight truncate">
+                                        {building.name}
+                                      </div>
+                                    </div>
 
-              {/* List View */}
-              <Tabs.Content value="list" className="flex-1 p-4">
-                <ScrollArea.Root className="w-full h-[50vh]">
-                  <ScrollArea.Viewport className="w-full h-full">
-                    <div className="space-y-2 p-2">
-                      {buildings.map((building) => {
-                        const isDisabled = (building.category === 'signature' && (!building.isUnlocked || building.isPlaced))
-                        
-                        return (
-                          <button
-                            key={building.key}
-                            onClick={() => !isDisabled && handleBuildingSelect(building)}
-                            disabled={isDisabled}
-                            className={`
-                              w-full flex items-center gap-4 p-3 rounded-lg
-                              bg-slate-800/50 hover:bg-slate-700/50 transition-all
-                              ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                              ${building.isPlaced ? 'ring-2 ring-green-500' : ''}
-                            `}
-                          >
-                            <div className="w-12 h-12 flex-shrink-0">
-                              <PhaserTextureDisplay
-                                textureKey={building.key}
-                                gameScene={gameScene}
-                                width={48}
-                                height={48}
-                                scale={getTextureScale(building)}
-                                className="pixelated"
-                              />
-                            </div>
-                            <div className="flex-1 text-left">
-                              <div className="text-white font-semibold">{building.name}</div>
-                              {building.description && (
-                                <div className="text-white/60 text-sm">{building.description}</div>
+                                    {/* Soft glow on hover */}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-sky-100/0 via-sky-100/20 to-sky-100/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-[1rem] pointer-events-none"></div>
+                                  </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                <Tooltip.Content
+                                  className="bg-gradient-to-br from-white/98 to-sky-50/98 text-slate-700 px-4 py-3 rounded-[1rem] shadow-xl max-w-xs border-3 border-white/90 backdrop-blur-sm"
+                                  sideOffset={15}
+                                  style={{ fontFamily: '"Comic Sans MS", "Marker Felt", cursive' }}
+                                >
+                                  <div className="font-bold text-slate-600 text-sm mb-1">
+                                    {building.name}
+                                  </div>
+                                  {building.description && (
+                                    <div className="text-slate-500 text-xs mb-2">{building.description}</div>
+                                  )}
+                                  {building.category === 'signature' && building.requiredWorkshop && (
+                                    <div className="text-orange-600 text-xs border-t-2 border-sky-200 pt-2 font-bold">
+                                      Requires: Workshop {building.requiredWorkshop}
+                                    </div>
+                                  )}
+                                  <Tooltip.Arrow className="fill-white/98" />
+                                </Tooltip.Content>
+                              </Tooltip.Portal>
+                              </Tooltip.Root>
+                              
+                              {/* Status indicators outside the box for signature buildings */}
+                              {building.category === 'signature' && building.isPlaced && (
+                                <div className="mt-1 bg-green-300 text-green-800 text-xs px-2 py-1 rounded-full border-2 border-white shadow-md font-bold">
+                                  Built
+                                </div>
+                              )}
+                              {building.category === 'signature' && !building.isUnlocked && (
+                                <div className="mt-1 bg-red-300 text-red-800 text-xs px-2 py-1 rounded-full border-2 border-white shadow-md font-bold">
+                                  🔒 Locked
+                                </div>
                               )}
                             </div>
-                            {building.isPlaced && (
-                              <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                                Placed
-                              </span>
-                            )}
-                            {building.category === 'signature' && !building.isUnlocked && (
-                              <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                                Locked
-                              </span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </ScrollArea.Viewport>
-                  <ScrollArea.Scrollbar
-                    className="flex select-none touch-none p-0.5 bg-slate-700/30 transition-colors duration-[160ms] ease-out hover:bg-slate-700/50 data-[orientation=vertical]:w-2.5 data-[orientation=horizontal]:flex-col data-[orientation=horizontal]:h-2.5"
-                    orientation="vertical"
-                  >
-                    <ScrollArea.Thumb className="flex-1 bg-slate-500 rounded-[10px] relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]" />
-                  </ScrollArea.Scrollbar>
-                </ScrollArea.Root>
-              </Tabs.Content>
-            </Tabs.Root>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+                          )
+                        })}
+                      </div>
+                    </ScrollArea.Viewport>
+                    
+                    {/* AC-style custom scrollbar */}
+                    <ScrollArea.Scrollbar
+                      className="flex select-none touch-none p-1 bg-sky-100/80 transition-colors duration-300 hover:bg-sky-200/80 data-[orientation=vertical]:w-4 border-l-3 border-white/70 rounded-r-lg"
+                      orientation="vertical"
+                    >
+                      <ScrollArea.Thumb className="flex-1 bg-gradient-to-b from-sky-300 via-blue-300 to-indigo-300 rounded-full border-2 border-white/80 shadow-sm" />
+                    </ScrollArea.Scrollbar>
+                  </ScrollArea.Root>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Tooltip.Provider>
   )
 }
