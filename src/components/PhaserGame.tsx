@@ -46,4 +46,5 @@ const PhaserGame: React.FC = () => {
   return <div ref={containerRef} className="phaser-container" />
 }
 
+
 export default PhaserGame
