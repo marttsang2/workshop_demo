@@ -24,6 +24,19 @@ interface CategoryButton {
   category: string
 }
 
+interface Workshop {
+  id: string
+  stream?: string
+  title: string
+  desc: string
+  level: string
+  x: number
+  y: number
+  connections: string[]
+  prerequisites?: string[]
+  completed?: boolean
+}
+
 export default class IsometricScene extends Phaser.Scene {
   private gridSize = 8
   private tileWidth = 130
@@ -42,6 +55,8 @@ export default class IsometricScene extends Phaser.Scene {
   private containerStartX = 0
   private containerStartY = 0
   private dialogOpen = false
+  private completedWorkshops: Set<string> = new Set()
+  private placedSignatureBuildings: Set<string> = new Set()
 
   // NPC on roads (GSAP-driven)
   private roadNpcSprite: Phaser.GameObjects.Image | null = null
@@ -97,9 +112,17 @@ export default class IsometricScene extends Phaser.Scene {
     }
     
     // Load signature buildings (all 2x2) from public folder
+    this.load.image('signature_townhall', 'GiantCityBuilder/Public/Public_Townhall.png')
+    this.load.image('signature_library', 'GiantCityBuilder/Public/Public_Library.png')
+    this.load.image('signature_football_american', 'GiantCityBuilder/Public/Stadium_FootballAmerican.png')
+    this.load.image('signature_football_soccer', 'GiantCityBuilder/Public/Stadium_FootballSocker.png')
+    this.load.image('signature_cricket', 'GiantCityBuilder/Public/Stadium_Cricket.png')
+    this.load.image('signature_baseball', 'GiantCityBuilder/Public/Stadium_Baseball.png')
+    this.load.image('signature_fire_station', 'GiantCityBuilder/Public/Emergency_FireStation.png')
+    this.load.image('signature_police_station', 'GiantCityBuilder/Public/Emergency_PoliceStation.png')
     this.load.image('signature_hospital', 'GiantCityBuilder/Public/Doctor_Hospital.png')
+    this.load.image('signature_emergency_room', 'GiantCityBuilder/Public/Doctor_EmergencyRoom.png')
     this.load.image('signature_university', 'GiantCityBuilder/Public/Education_University.png')
-    // this.load.image('signature_cinema', 'GiantCityBuilder/Public/Leasure_Cinema.png')
   }
 
   create() {
@@ -372,9 +395,16 @@ export default class IsometricScene extends Phaser.Scene {
       })
     } else if (category === 'signature') {
       const signatures = [
-        { key: 'signature_hospital', name: '🏥 Hospital', description: 'Medical Center' },
-        { key: 'signature_university', name: '🎓 University', description: 'Education' },
-        // { key: 'signature_cinema', name: '🎬 Cinema', description: 'Entertainment' }
+        { key: 'signature_townhall', name: '🏛️ Town Hall', description: 'City Government', requiredWorkshop: 'COMMON' },
+        { key: 'signature_library', name: '📚 Library', description: 'Knowledge Center', requiredWorkshop: 'A1' },
+        { key: 'signature_football_american', name: '🏈 Football Stadium', description: 'American Football', requiredWorkshop: 'A2' },
+        { key: 'signature_football_soccer', name: '⚽ Soccer Stadium', description: 'Soccer/Football', requiredWorkshop: 'B2' },
+        { key: 'signature_cricket', name: '🏏 Cricket Stadium', description: 'Cricket Field', requiredWorkshop: 'C2' },
+        { key: 'signature_baseball', name: '⚾ Baseball Stadium', description: 'Baseball Field', requiredWorkshop: 'F1' },
+        { key: 'signature_fire_station', name: '🚒 Fire Station', description: 'Emergency Services', requiredWorkshop: 'F2' },
+        { key: 'signature_police_station', name: '🚔 Police Station', description: 'Law Enforcement', requiredWorkshop: 'F3' },
+        { key: 'signature_hospital', name: '🏥 Hospital', description: 'Medical Center', requiredWorkshop: 'F4' },
+        { key: 'signature_emergency_room', name: '🚑 Emergency Room', description: 'Emergency Care', requiredWorkshop: 'E' }
       ]
       
       signatures.forEach((building, index) => {
@@ -384,21 +414,51 @@ export default class IsometricScene extends Phaser.Scene {
         const x = (col - gridCols/2 + 0.5) * (itemSize + spacing)
         const y = contentY + row * (itemSize + spacing) + 50
         
-        // Item background
-        const itemBg = this.add.rectangle(x, y, itemSize, itemSize, 0x465669, 1)
-        itemBg.setStrokeStyle(2, 0x667788, 0.5)
-        itemBg.setInteractive({ useHandCursor: true })
+        const isUnlocked = this.isBuildingUnlocked(building.key)
+        const isAlreadyPlaced = this.placedSignatureBuildings.has(building.key)
+        const isAvailable = isUnlocked && !isAlreadyPlaced
+        
+        // Item background - different colors based on state
+        let bgColor = 0x465669 // Default
+        if (isAlreadyPlaced) {
+          bgColor = 0x064e3b // Dark green for placed
+        } else if (!isUnlocked) {
+          bgColor = 0x1f1f1f // Dark grey for locked
+        }
+        
+        const itemBg = this.add.rectangle(x, y, itemSize, itemSize, bgColor, isUnlocked ? 1 : 0.5)
+        itemBg.setStrokeStyle(2, isAlreadyPlaced ? 0x10b981 : (isUnlocked ? 0x667788 : 0x333333), isUnlocked ? 0.5 : 0.3)
+        
+        if (isAvailable) {
+          itemBg.setInteractive({ useHandCursor: true })
+        }
         dialogContainer.add(itemBg)
         
         // Building image
         const img = this.add.image(x, y - 10, building.key)
         img.setScale(0.06) // Small scale for 2x2 buildings
+        img.setAlpha(isUnlocked ? 1 : 0.3)
         dialogContainer.add(img)
+        
+        // Status indicators
+        if (isAlreadyPlaced) {
+          const checkmark = this.add.text(x + itemSize/2 - 15, y - itemSize/2 + 15, '✓', {
+            fontSize: '16px',
+            color: '#10b981',
+            fontStyle: 'bold'
+          }).setOrigin(0.5)
+          dialogContainer.add(checkmark)
+        } else if (!isUnlocked) {
+          const lockIcon = this.add.text(x + itemSize/2 - 15, y - itemSize/2 + 15, '🔒', {
+            fontSize: '14px'
+          }).setOrigin(0.5)
+          dialogContainer.add(lockIcon)
+        }
         
         // Label with emoji
         const label = this.add.text(x, y + 35, building.name, {
           fontSize: '11px',
-          color: '#ffffff',
+          color: isUnlocked ? '#ffffff' : '#666666',
           align: 'center'
         }).setOrigin(0.5)
         dialogContainer.add(label)
@@ -406,28 +466,40 @@ export default class IsometricScene extends Phaser.Scene {
         // Description
         const desc = this.add.text(x, y + 48, building.description, {
           fontSize: '9px',
-          color: '#aaaaaa',
+          color: isUnlocked ? '#aaaaaa' : '#555555',
           align: 'center'
         }).setOrigin(0.5)
         dialogContainer.add(desc)
         
-        // Interactions
-        itemBg.on('pointerover', () => {
-          itemBg.setFillStyle(0x556983)
-          img.setScale(0.065) // Slightly larger on hover
-        })
+        // Unlock requirement display for locked buildings
+        if (!isUnlocked && building.requiredWorkshop) {
+          const reqText = this.add.text(x, y + 58, `Unlock: ${building.requiredWorkshop}`, {
+            fontSize: '8px',
+            color: '#fbbf24',
+            align: 'center'
+          }).setOrigin(0.5)
+          dialogContainer.add(reqText)
+        }
         
-        itemBg.on('pointerout', () => {
-          itemBg.setFillStyle(0x465669)
-          img.setScale(0.06) // Back to original
-        })
-        
-        itemBg.on('pointerdown', () => {
-          this.selectBuilding(building.key)
-          this.dialogOpen = false
-          overlay.destroy()
-          dialogContainer.destroy(true)
-        })
+        // Interactions only for available buildings
+        if (isAvailable) {
+          itemBg.on('pointerover', () => {
+            itemBg.setFillStyle(0x556983)
+            img.setScale(0.065) // Slightly larger on hover
+          })
+          
+          itemBg.on('pointerout', () => {
+            itemBg.setFillStyle(bgColor)
+            img.setScale(0.06) // Back to original
+          })
+          
+          itemBg.on('pointerdown', () => {
+            this.selectBuilding(building.key)
+            this.dialogOpen = false
+            overlay.destroy()
+            dialogContainer.destroy(true)
+          })
+        }
       })
     } else if (category === 'roads') {
       const roads = [
@@ -904,6 +976,11 @@ export default class IsometricScene extends Phaser.Scene {
     }
     
     this.buildings.push(building)
+    
+    // Track signature building placement
+    if (this.selectedBuilding && this.selectedBuilding.includes('signature_')) {
+      this.placedSignatureBuildings.add(this.selectedBuilding)
+    }
   }
 
   private resortGridChildrenByDepth() {
@@ -1265,6 +1342,48 @@ export default class IsometricScene extends Phaser.Scene {
     }
   }
   
+  private checkPrerequisites(workshop: Workshop): boolean {
+    if (!workshop.prerequisites || workshop.prerequisites.length === 0) {
+      return true
+    }
+    
+    // For the COMMON workshop, only need ONE of the prerequisite streams (A1, B1, or C1)
+    if (workshop.id === 'COMMON') {
+      return workshop.prerequisites.some(prereq => this.completedWorkshops.has(prereq))
+    }
+    
+    // For advanced workshops like F2 and F3 that have multiple paths, use OR logic
+    if (workshop.id === 'F2' || workshop.id === 'F3') {
+      return workshop.prerequisites.some(prereq => this.completedWorkshops.has(prereq))
+    }
+    
+    // For the final workshop (E), need ALL advanced workshops completed
+    if (workshop.id === 'E') {
+      return workshop.prerequisites.some(prereq => this.completedWorkshops.has(prereq))
+    }
+    
+    // For all other workshops, need ALL prerequisites completed
+    return workshop.prerequisites.every(prereq => this.completedWorkshops.has(prereq))
+  }
+  
+  private isBuildingUnlocked(buildingKey: string): boolean {
+    const buildingUnlockRequirements: { [key: string]: string } = {
+      'signature_townhall': 'COMMON', // Leadership Foundations
+      'signature_library': 'A1', // Communication Skills
+      'signature_football_american': 'A2', // Public Speaking
+      'signature_football_soccer': 'B2', // Team Building
+      'signature_cricket': 'C2', // Strategic Planning
+      'signature_baseball': 'F1', // Executive Communication
+      'signature_fire_station': 'F2', // Change Management
+      'signature_police_station': 'F3', // Innovation Leadership
+      'signature_hospital': 'F4', // Business Strategy
+      'signature_emergency_room': 'E' // Executive Leadership
+    }
+    
+    const requiredWorkshop = buildingUnlockRequirements[buildingKey]
+    return requiredWorkshop ? this.completedWorkshops.has(requiredWorkshop) : false
+  }
+  
   private showWorkshopPopup() {
     const width = this.scale.width
     const height = this.scale.height
@@ -1337,29 +1456,29 @@ export default class IsometricScene extends Phaser.Scene {
     const workshopContainer = this.add.container(0, 0)
     contentContainer.add(workshopContainer)
     
-    // Workshop data - unified path with 3 starting points
-    const workshops = [
-      // Three starting points - Stream A, B, C
-      { id: 'A1', stream: 'A', title: 'Communication Skills', desc: 'Verbal & written mastery', level: 'Beginner', x: -450, y: -200, connections: ['COMMON'] },
-      { id: 'B1', stream: 'B', title: 'Emotional Intelligence', desc: 'Self & social awareness', level: 'Beginner', x: -450, y: 0, connections: ['COMMON'] },
-      { id: 'C1', stream: 'C', title: 'Critical Thinking', desc: 'Analytical skills', level: 'Beginner', x: -450, y: 200, connections: ['COMMON'] },
+    // Workshop data - unified path with 3 starting points and prerequisites
+    const workshops: Workshop[] = [
+      // Three starting points - Stream A, B, C (no prerequisites)
+      { id: 'A1', stream: 'A', title: 'Communication Skills', desc: 'Verbal & written mastery', level: 'Beginner', x: -450, y: -200, connections: ['COMMON'], prerequisites: [] },
+      { id: 'B1', stream: 'B', title: 'Emotional Intelligence', desc: 'Self & social awareness', level: 'Beginner', x: -450, y: 0, connections: ['COMMON'], prerequisites: [] },
+      { id: 'C1', stream: 'C', title: 'Critical Thinking', desc: 'Analytical skills', level: 'Beginner', x: -450, y: 200, connections: ['COMMON'], prerequisites: [] },
       
       // Common second workshop that all streams pass through
-      { id: 'COMMON', title: 'Leadership Foundations', desc: 'Core leadership principles', level: 'Intermediate', x: -200, y: 0, connections: ['A2', 'B2', 'C2'] },
+      { id: 'COMMON', title: 'Leadership Foundations', desc: 'Core leadership principles', level: 'Intermediate', x: -200, y: 0, connections: ['A2', 'B2', 'C2'], prerequisites: ['A1', 'B1', 'C1'] },
       
       // Three different third workshops (streams diverge again)
-      { id: 'A2', stream: 'A', title: 'Public Speaking', desc: 'Presentation confidence', level: 'Intermediate', x: 50, y: -200, connections: ['F1', 'F2'] },
-      { id: 'B2', stream: 'B', title: 'Team Building', desc: 'Creating high-performing teams', level: 'Intermediate', x: 50, y: 0, connections: ['F2', 'F3'] },
-      { id: 'C2', stream: 'C', title: 'Strategic Planning', desc: 'Long-term vision', level: 'Intermediate', x: 50, y: 200, connections: ['F3', 'F4'] },
+      { id: 'A2', stream: 'A', title: 'Public Speaking', desc: 'Presentation confidence', level: 'Intermediate', x: 50, y: -200, connections: ['F1', 'F2'], prerequisites: ['COMMON'] },
+      { id: 'B2', stream: 'B', title: 'Team Building', desc: 'Creating high-performing teams', level: 'Intermediate', x: 50, y: 0, connections: ['F2', 'F3'], prerequisites: ['COMMON'] },
+      { id: 'C2', stream: 'C', title: 'Strategic Planning', desc: 'Long-term vision', level: 'Intermediate', x: 50, y: 200, connections: ['F3', 'F4'], prerequisites: ['COMMON'] },
       
       // Advanced workshops (multiple paths converge)
-      { id: 'F1', title: 'Executive Communication', desc: 'C-suite messaging', level: 'Advanced', x: 300, y: -250, connections: ['E'] },
-      { id: 'F2', title: 'Change Management', desc: 'Leading transformation', level: 'Advanced', x: 300, y: -100, connections: ['E'] },
-      { id: 'F3', title: 'Innovation Leadership', desc: 'Driving creativity', level: 'Advanced', x: 300, y: 100, connections: ['E'] },
-      { id: 'F4', title: 'Business Strategy', desc: 'Market positioning', level: 'Advanced', x: 300, y: 250, connections: ['E'] },
+      { id: 'F1', title: 'Executive Communication', desc: 'C-suite messaging', level: 'Advanced', x: 300, y: -250, connections: ['E'], prerequisites: ['A2'] },
+      { id: 'F2', title: 'Change Management', desc: 'Leading transformation', level: 'Advanced', x: 300, y: -100, connections: ['E'], prerequisites: ['A2', 'B2'] },
+      { id: 'F3', title: 'Innovation Leadership', desc: 'Driving creativity', level: 'Advanced', x: 300, y: 100, connections: ['E'], prerequisites: ['B2', 'C2'] },
+      { id: 'F4', title: 'Business Strategy', desc: 'Market positioning', level: 'Advanced', x: 300, y: 250, connections: ['E'], prerequisites: ['C2'] },
       
       // Ultimate goal - all paths lead here
-      { id: 'E', title: 'Executive Leadership', desc: 'Complete leadership mastery', level: 'Master', x: 550, y: 0, connections: [] }
+      { id: 'E', title: 'Executive Leadership', desc: 'Complete leadership mastery', level: 'Master', x: 550, y: 0, connections: [], prerequisites: ['F1', 'F2', 'F3', 'F4'] }
     ]
     
     // Draw connection lines first (so they appear behind cards)
@@ -1402,87 +1521,119 @@ export default class IsometricScene extends Phaser.Scene {
       'C': 0xe74c3c   // Red
     }
     
-    // Level indicator colors
-    const levelColors: { [key: string]: number } = {
-      'Beginner': 0x10b981,
-      'Intermediate': 0xf59e0b,
-      'Advanced': 0xef4444,
-      'Master': 0x9b59b6
-    }
     
     // Create workshop cards
     workshops.forEach(workshop => {
       const x = workshop.x
       const y = workshop.y
+      const isCompleted = this.completedWorkshops.has(workshop.id)
+      const isUnlocked = this.checkPrerequisites(workshop)
+      const isSelectable = isUnlocked && !isCompleted
       
       // Workshop card
       const cardWidth = 180
       const cardHeight = 80
       const streamColor = workshop.stream ? streamColors[workshop.stream] : 0x7c3aed
-      const cardBg = this.add.rectangle(x, y, cardWidth, cardHeight, 0x16213e, 1)
       
-      // Add stream-colored border for starting workshops
-      if (workshop.stream) {
-        cardBg.setStrokeStyle(3, streamColor, 0.8)
-      } else {
-        cardBg.setStrokeStyle(2, 0x533483, 0.5)
+      // Determine card color based on status
+      let cardColor = 0x16213e // Default color
+      if (isCompleted) {
+        cardColor = 0x064e3b // Dark green for completed
+      } else if (!isUnlocked) {
+        cardColor = 0x0f0f0f // Dark grey for locked
       }
       
-      cardBg.setInteractive({ useHandCursor: true })
+      const cardBg = this.add.rectangle(x, y, cardWidth, cardHeight, cardColor, isUnlocked ? 1 : 0.5)
+      
+      // Add stream-colored border for starting workshops
+      if (workshop.stream && isUnlocked) {
+        cardBg.setStrokeStyle(3, streamColor, 0.8)
+      } else if (isCompleted) {
+        cardBg.setStrokeStyle(3, 0x10b981, 0.8) // Green border for completed
+      } else {
+        cardBg.setStrokeStyle(2, 0x533483, isUnlocked ? 0.5 : 0.2)
+      }
+      
+      if (isSelectable) {
+        cardBg.setInteractive({ useHandCursor: true })
+      }
       workshopContainer.add(cardBg)
       
       // Stream indicator OUTSIDE the box for starting workshops
       if (workshop.stream) {
         // Create circular stream indicator above the card
-        const streamCircle = this.add.circle(x - cardWidth/2 - 20, y, 18, streamColor)
+        const streamCircle = this.add.circle(x - cardWidth/2 - 20, y, 18, streamColor, isUnlocked ? 1 : 0.3)
         workshopContainer.add(streamCircle)
         
         const streamLabel = this.add.text(x - cardWidth/2 - 20, y, workshop.stream, {
           fontSize: '16px',
-          color: '#ffffff',
+          color: isUnlocked ? '#ffffff' : '#666666',
           fontStyle: 'bold',
           fontFamily: 'Arial, sans-serif'
         }).setOrigin(0.5, 0.5)
         workshopContainer.add(streamLabel)
       }
       
-      // Level indicator color bar on left side
+      // Remove level indicator - no longer needed
       const indicatorX = x - cardWidth/2 + 6
-      const levelIndicator = this.add.rectangle(indicatorX, y, 8, cardHeight - 10, levelColors[workshop.level], 1)
-      workshopContainer.add(levelIndicator)
+      
+      // Completion checkmark for completed workshops
+      if (isCompleted) {
+        const checkmark = this.add.text(x + cardWidth/2 - 20, y - cardHeight/2 + 20, '✓', {
+          fontSize: '24px',
+          color: '#10b981',
+          fontStyle: 'bold'
+        }).setOrigin(0.5)
+        workshopContainer.add(checkmark)
+      }
+      
+      // Lock icon for locked workshops
+      if (!isUnlocked) {
+        const lockIcon = this.add.text(x + cardWidth/2 - 20, y - cardHeight/2 + 20, '🔒', {
+          fontSize: '18px'
+        }).setOrigin(0.5)
+        workshopContainer.add(lockIcon)
+      }
       
       // Workshop title - optimized
-      const titleText = this.add.text(indicatorX + 15, y - 10, workshop.title, {
+      const titleText = this.add.text(indicatorX + 10, y - 10, workshop.title, {
         fontSize: '14px',
-        color: '#ffffff',
+        color: isUnlocked ? '#ffffff' : '#666666',
         fontStyle: 'bold',
         fontFamily: 'Arial, sans-serif'
       }).setOrigin(0, 0.5)
       workshopContainer.add(titleText)
       
       // Workshop description - optimized
-      const descText = this.add.text(indicatorX + 15, y + 12, workshop.desc, {
+      const descText = this.add.text(indicatorX + 10, y + 12, workshop.desc, {
         fontSize: '11px',
-        color: '#9ca3af',
-        wordWrap: { width: cardWidth - 40 },
+        color: isUnlocked ? '#9ca3af' : '#555555',
+        wordWrap: { width: cardWidth - 30 },
         fontFamily: 'Arial, sans-serif'
       }).setOrigin(0, 0.5)
       workshopContainer.add(descText)
       
-      // Hover effects
-      cardBg.on('pointerover', () => {
-        cardBg.setFillStyle(0x1e293b, 1)
-        cardBg.setScale(1.05)
-        titleText.setScale(1.05)
-        descText.setScale(1.05)
-      })
-      
-      cardBg.on('pointerout', () => {
-        cardBg.setFillStyle(0x16213e, 1)
-        cardBg.setScale(1)
-        titleText.setScale(1)
-        descText.setScale(1)
-      })
+      // Hover effects only for selectable workshops
+      if (isSelectable) {
+        cardBg.on('pointerover', () => {
+          cardBg.setFillStyle(0x1e293b, 1)
+          cardBg.setScale(1.05)
+          titleText.setScale(1.05)
+          descText.setScale(1.05)
+        })
+        
+        cardBg.on('pointerout', () => {
+          cardBg.setFillStyle(cardColor, 1)
+          cardBg.setScale(1)
+          titleText.setScale(1)
+          descText.setScale(1)
+        })
+        
+        // Click to select workshop
+        cardBg.on('pointerdown', () => {
+          this.showWorkshopDetails(workshop, overlay, dialogContainer)
+        })
+      }
     })
     
     // Implement drag-and-drop for the workshop container
@@ -1492,12 +1643,10 @@ export default class IsometricScene extends Phaser.Scene {
     let containerStartX = 0
     let containerStartY = 0
     
-    // Create invisible interaction area
-    const interactionArea = this.add.rectangle(0, viewportY, viewportWidth, viewportHeight, 0x000000, 0.01)
-    interactionArea.setInteractive()
-    dialogContainer.add(interactionArea)
+    // Simple drag on contentContainer background
+    contentContainer.setInteractive(new Phaser.Geom.Rectangle(-viewportWidth/2, -viewportHeight/2, viewportWidth, viewportHeight), Phaser.Geom.Rectangle.Contains)
     
-    interactionArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+    contentContainer.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       isDragging = true
       dragStartX = pointer.x
       dragStartY = pointer.y
@@ -1521,7 +1670,7 @@ export default class IsometricScene extends Phaser.Scene {
     })
     
     // Mouse wheel zoom for workshop view
-    interactionArea.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
+    contentContainer.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
       const currentScale = workshopContainer.scale
       const newScale = Phaser.Math.Clamp(currentScale - deltaY * 0.001, 0.5, 1.5)
       workshopContainer.setScale(newScale)
@@ -1544,6 +1693,137 @@ export default class IsometricScene extends Phaser.Scene {
       this.dialogOpen = false
       overlay.destroy()
       dialogContainer.destroy(true)
+    })
+  }
+  
+  private showWorkshopDetails(workshop: Workshop, overlay: Phaser.GameObjects.Rectangle, mainDialog: Phaser.GameObjects.Container) {
+    const width = this.scale.width
+    const height = this.scale.height
+    
+    // Create details dialog
+    const detailsContainer = this.add.container(width/2, height/2)
+    detailsContainer.setDepth(20002)
+    
+    // Details background
+    const dialogWidth = 500
+    const dialogHeight = 350
+    const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x1a1a2e, 1)
+    dialogBg.setStrokeStyle(3, 0x16213e, 0.8)
+    detailsContainer.add(dialogBg)
+    
+    // Title bar
+    const titleBar = this.add.rectangle(0, -dialogHeight/2 + 30, dialogWidth, 60, 0x0f3460, 1)
+    detailsContainer.add(titleBar)
+    
+    // Workshop title
+    const titleText = this.add.text(0, -dialogHeight/2 + 30, workshop.title, {
+      fontSize: '20px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5)
+    detailsContainer.add(titleText)
+    
+    // Close button
+    const closeBtn = this.add.rectangle(dialogWidth/2 - 30, -dialogHeight/2 + 30, 40, 40, 0xe94560, 1)
+    closeBtn.setInteractive({ useHandCursor: true })
+    closeBtn.setStrokeStyle(2, 0xffffff, 0.5)
+    detailsContainer.add(closeBtn)
+    
+    const closeText = this.add.text(dialogWidth/2 - 30, -dialogHeight/2 + 30, '✕', {
+      fontSize: '20px',
+      color: '#ffffff'
+    }).setOrigin(0.5)
+    detailsContainer.add(closeText)
+    
+    // Workshop details
+    const detailsY = -50
+    
+    // Description
+    const descText = this.add.text(0, detailsY + 20, workshop.desc, {
+      fontSize: '16px',
+      color: '#e5e5e5',
+      align: 'center',
+      wordWrap: { width: dialogWidth - 80 }
+    }).setOrigin(0.5)
+    detailsContainer.add(descText)
+    
+    // Prerequisites section
+    if (workshop.prerequisites && workshop.prerequisites.length > 0) {
+      const prereqTitle = this.add.text(-dialogWidth/2 + 40, detailsY + 70, 'Prerequisites:', {
+        fontSize: '14px',
+        color: '#fbbf24',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5)
+      detailsContainer.add(prereqTitle)
+      
+      const prereqList = workshop.prerequisites.map(p => {
+        const isComplete = this.completedWorkshops.has(p)
+        return `${isComplete ? '✓' : '○'} ${p}`
+      }).join('\n')
+      
+      const prereqText = this.add.text(-dialogWidth/2 + 40, detailsY + 95, prereqList, {
+        fontSize: '12px',
+        color: '#9ca3af',
+        lineSpacing: 5
+      }).setOrigin(0, 0)
+      detailsContainer.add(prereqText)
+    }
+    
+    // Complete button
+    const completeBtn = this.add.rectangle(0, dialogHeight/2 - 50, 200, 50, 0x10b981, 1)
+    completeBtn.setInteractive({ useHandCursor: true })
+    completeBtn.setStrokeStyle(2, 0xffffff, 0.5)
+    detailsContainer.add(completeBtn)
+    
+    const completeBtnText = this.add.text(0, dialogHeight/2 - 50, 'Complete Workshop', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5)
+    detailsContainer.add(completeBtnText)
+    
+    // Complete button interactions
+    completeBtn.on('pointerover', () => {
+      completeBtn.setFillStyle(0x059669)
+      completeBtn.setScale(1.05)
+      completeBtnText.setScale(1.05)
+    })
+    
+    completeBtn.on('pointerout', () => {
+      completeBtn.setFillStyle(0x10b981)
+      completeBtn.setScale(1)
+      completeBtnText.setScale(1)
+    })
+    
+    completeBtn.on('pointerdown', () => {
+      // Mark workshop as completed
+      this.completedWorkshops.add(workshop.id)
+      
+      // Close all dialogs and reopen the main workshop view to show updated state
+      detailsContainer.destroy(true)
+      mainDialog.destroy(true)
+      overlay.destroy()
+      this.dialogOpen = false
+      
+      // Reopen the workshop popup to show updated completion states
+      this.showWorkshopPopup()
+    })
+    
+    // Close button functionality
+    closeBtn.on('pointerover', () => {
+      closeBtn.setFillStyle(0xc0392b)
+      closeBtn.setScale(1.1)
+      closeText.setScale(1.1)
+    })
+    
+    closeBtn.on('pointerout', () => {
+      closeBtn.setFillStyle(0xe94560)
+      closeBtn.setScale(1)
+      closeText.setScale(1)
+    })
+    
+    closeBtn.on('pointerdown', () => {
+      detailsContainer.destroy(true)
     })
   }
   
@@ -1593,6 +1873,12 @@ export default class IsometricScene extends Phaser.Scene {
     const index = this.buildings.indexOf(building)
     if (index > -1) {
       this.buildings.splice(index, 1)
+    }
+    
+    // Remove from signature building tracking if it was a signature building
+    const deletedBuildingKey = building.texture.key
+    if (deletedBuildingKey.includes('signature_')) {
+      this.placedSignatureBuildings.delete(deletedBuildingKey)
     }
     
     // Destroy the building sprite
