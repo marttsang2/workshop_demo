@@ -21,7 +21,7 @@ interface CategoryButton {
 }
 
 export default class IsometricScene extends Phaser.Scene {
-  private gridSize = 7
+  private gridSize = 8
   private tileWidth = 130
   private tileHeight = 80
   private tiles: TileData[][] = []
@@ -80,7 +80,10 @@ export default class IsometricScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBackgroundColor('#5DADE2')
     
-    this.gridContainer = this.add.container(0, 0)
+    // Create and position container FIRST
+    const centerX = this.cameras.main.width / 2
+    const centerY = this.cameras.main.height / 2
+    this.gridContainer = this.add.container(centerX, centerY)
     this.highlightGraphics = this.add.graphics()
     
     this.initializeGrid()
@@ -88,9 +91,9 @@ export default class IsometricScene extends Phaser.Scene {
     this.setupInteraction()
     this.createUI()
     
-    const centerX = this.cameras.main.width / 2
-    const centerY = this.cameras.main.height / 2 - 50
-    this.gridContainer.setPosition(centerX, centerY)
+    // Initialize with University in center and roads around it
+    // This must happen AFTER container is positioned
+    this.initializeStartingBuildings()
     
     // Handle window resize
     this.scale.on('resize', this.resize, this)
@@ -109,7 +112,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Center grid if not being dragged
     if (!this.isDragging && this.gridContainer) {
-      this.gridContainer.setPosition(width / 2, height / 2 - 50)
+      this.gridContainer.setPosition(width / 2, height / 2)
     }
   }
 
@@ -663,23 +666,8 @@ export default class IsometricScene extends Phaser.Scene {
   }
   
   private updateBuildingPositions() {
-    if (!this.gridContainer) return
-    
-    // Update all buildings based on their stored local positions
-    this.buildings.forEach(building => {
-      const localX = building.getData('localX')
-      const localY = building.getData('localY')
-      
-      if (localX !== undefined && localY !== undefined) {
-        // Update building position based on container position and scale
-        building.x = this.gridContainer!.x + localX * this.gridContainer!.scale
-        building.y = this.gridContainer!.y + localY * this.gridContainer!.scale
-        
-        // Update building scale
-        const originalScale = this.tileWidth / 512 // Assuming 512 is the original tile image width
-        building.setScale(originalScale * this.gridContainer!.scale)
-      }
-    })
+    // Buildings are now in the container, so they scale and move automatically
+    // No need to manually update their positions or scales
   }
 
   private drawTileHighlight(x: number, y: number, scale: number = 1) {
@@ -765,20 +753,20 @@ export default class IsometricScene extends Phaser.Scene {
     const localX = totalX / tileCount
     const localY = totalY / tileCount - 16
     
-    // Calculate world position
-    const worldX = this.gridContainer.x + localX * this.gridContainer.scale
-    const worldY = this.gridContainer.y + localY * this.gridContainer.scale
-    
-    const building = this.add.image(worldX, worldY, this.selectedBuilding)
+    // Create building at local coordinates (relative to container)
+    const building = this.add.image(localX, localY, this.selectedBuilding)
     building.setOrigin(0.5, 0.7)
     
-    // Store local position for updates
+    // Add building to the container so it moves with the grid
+    this.gridContainer.add(building)
+    
+    // Store local position for reference
     building.setData('localX', localX)
     building.setData('localY', localY)
     
-    // Scale building to match tile size and container scale
+    // Scale building to match tile size
     const baseTile = this.tiles[gridY][gridX].tile
-    const tileScale = baseTile.scaleX * this.gridContainer.scale
+    const tileScale = baseTile.scaleX
     building.setScale(tileScale)
     
     // Calculate depth for isometric view
@@ -883,6 +871,52 @@ export default class IsometricScene extends Phaser.Scene {
 
   public setSelectedBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
+  }
+  
+  private initializeStartingBuildings() {
+    // Place University in the center of the grid (3,3 for 8x8 grid, as it's 2x2)
+    const centerRow = 3
+    const centerCol = 3
+    
+    // Place the University building
+    this.selectedBuilding = 'signature_university'
+    const centerTile = this.tiles[centerRow][centerCol]
+    this.placeBuilding(centerTile)
+    
+    // Add bouncing animation to the University building
+    const universityBuilding = this.buildings[this.buildings.length - 1]
+    if (universityBuilding) {
+      const baseY = universityBuilding.y
+      
+      // Create a bouncing tween animation
+      this.tweens.add({
+        targets: universityBuilding,
+        y: baseY - 8, // Bounce up by 8 pixels
+        duration: 1000, // 1 second up
+        ease: 'Sine.easeInOut',
+        yoyo: true, // Return to original position
+        repeat: -1 // Infinite repeat
+      })
+    }
+    
+    // Place roads around the University (forming a square)
+    // University occupies (3,3), (3,4), (4,3), (4,4)
+    // Roads should be at positions surrounding this 2x2 area
+    
+    // Road tile mapping based on Phaser road types:
+    // road_1: Straight horizontal (→)
+    // road_2: Straight vertical (↓)
+    // road_3: Turn bottom-right (↘)
+    // road_4: Turn bottom-left (↙)
+    // road_5: Turn top-right (↗)
+    // road_6: Turn top-left (↖)
+    // road_7: T-junction
+    // road_8: Cross/4-way
+    // road_9: End cap
+    
+    
+    // Clear selection after initialization
+    this.selectedBuilding = null
   }
   
   private deleteBuilding(tileData: TileData) {
