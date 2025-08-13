@@ -19,7 +19,7 @@ interface BuildingSize {
 }
 
 interface CategoryButton {
-  bg: Phaser.GameObjects.Rectangle
+  container: Phaser.GameObjects.Container
   icon: Phaser.GameObjects.Text
   category: string
 }
@@ -42,6 +42,7 @@ export default class IsometricScene extends Phaser.Scene {
   private containerStartX = 0
   private containerStartY = 0
   private dialogOpen = false
+  private buildingPreview: Phaser.GameObjects.Image | null = null
 
   // NPC on roads (GSAP-driven)
   private roadNpcSprite: Phaser.GameObjects.Image | null = null
@@ -169,68 +170,219 @@ export default class IsometricScene extends Phaser.Scene {
     const width = this.scale.width
     const height = this.scale.height
     
-    // Create UI container for building menu
-    this.uiContainer = this.add.container(width / 2, height - 60)
+    // Create UI container for building menu (positioned higher for better visibility)
+    this.uiContainer = this.add.container(width / 2, height - 80)
     
-    // Create semi-transparent background bar
-    const bgBar = this.add.rectangle(0, 0, width, 80, 0x000000, 0.7)
-    this.uiContainer.add(bgBar)
+    // Create modern gradient background with rounded corners effect
+    const bgBar = this.add.graphics()
+    bgBar.fillGradientStyle(0x2c3e50, 0x2c3e50, 0x34495e, 0x34495e, 1, 1, 0.95, 0.95)
+    bgBar.fillRoundedRect(-320, -50, 640, 100, 25)
     
-    // Create category buttons
+    // Add subtle glow effect
+    const glowBar = this.add.graphics()
+    glowBar.fillStyle(0x3498db, 0.1)
+    glowBar.fillRoundedRect(-325, -55, 650, 110, 30)
+    this.uiContainer.add([glowBar, bgBar])
+    
+    // Create category buttons with cute, gamified styling
     const categories = [
-      { category: 'apartments', icon: '🏠', color: 0x3498db },
-      { category: 'signature', icon: '🏛️', color: 0x9b59b6 },
-      { category: 'roads', icon: '🛤️', color: 0x95a5a6 },
-      { category: 'delete', icon: '❌', color: 0xe74c3c },
-      { category: 'world', icon: '🌐', color: 0xf39c12 }
+      { category: 'apartments', icon: '🏠', color: 0xff6b9d, name: 'Homes', desc: 'Cozy living spaces' },
+      { category: 'signature', icon: '🏛️', color: 0xa855f7, name: 'Specials', desc: 'Unique buildings' },
+      { category: 'roads', icon: '🛤️', color: 0x06d6a0, name: 'Paths', desc: 'Connect your city' },
+      { category: 'delete', icon: '🗑️', color: 0xf43f5e, name: 'Remove', desc: 'Clean up space' }
     ]
     
     categories.forEach((cat, index) => {
-      const x = (index - 2.5) * 70 - 250  // Adjusted for 6 categories
+      const x = (index - 1.5) * 100  // Better spacing for 5 categories
       
-      // Category button
-      const button = this.add.rectangle(x, 0, 55, 55, cat.color, 0.9)
-      button.setInteractive({ useHandCursor: true })
-      button.setStrokeStyle(2, 0xffffff, 0.5)
+      // Create button container for layered effects
+      const buttonContainer = this.add.container(x, 0)
       
-      // Category icon
-      const icon = this.add.text(x, 0, cat.icon, {
-        fontSize: '24px',
+      // Shadow/depth effect
+      const shadow = this.add.graphics()
+      shadow.fillStyle(0x000000, 0.2)
+      shadow.fillRoundedRect(-30, -27, 60, 54, 18)
+      buttonContainer.add(shadow)
+      
+      // Main button with gradient
+      const button = this.add.graphics()
+      button.fillGradientStyle(cat.color, cat.color, this.lightenColor(cat.color, 20), this.lightenColor(cat.color, 20), 1, 1, 0.9, 0.9)
+      button.fillRoundedRect(-28, -30, 56, 60, 16)
+      
+      // Highlight border
+      button.lineStyle(2, 0xffffff, 0.3)
+      button.strokeRoundedRect(-28, -30, 56, 60, 16)
+      buttonContainer.add(button)
+      
+      // Category icon with cute styling
+      const icon = this.add.text(x, -8, cat.icon, {
+        fontSize: '28px',
         align: 'center'
       }).setOrigin(0.5)
       
-      this.uiContainer?.add([button, icon])
+      // Category name text
+      const nameText = this.add.text(x, 12, cat.name, {
+        fontSize: '10px',
+        color: '#ffffff',
+        fontFamily: 'Arial, sans-serif',
+        fontStyle: 'bold'
+      }).setOrigin(0.5)
       
-      // Store category button
+      // Add floating animation to icons
+      this.tweens.add({
+        targets: icon,
+        y: icon.y - 2,
+        duration: 1500 + Math.random() * 1000,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1,
+        delay: index * 200
+      })
+      
+      this.uiContainer?.add([buttonContainer, icon, nameText])
+      
+      // Make the entire button container interactive with proper hit area
+      buttonContainer.setSize(56, 60)
+      buttonContainer.setInteractive(new Phaser.Geom.Rectangle(-28, -30, 56, 60), Phaser.Geom.Rectangle.Contains)
+      buttonContainer.input!.cursor = 'pointer'
+
+       // Ensure icon and label are also clickable
+       icon.setInteractive({ useHandCursor: true })
+       nameText.setInteractive({ useHandCursor: true })
+       const handleCategoryClick = () => {
+         this.tweens.add({
+           targets: [buttonContainer, icon, nameText],
+           scaleX: 0.9,
+           scaleY: 0.9,
+           duration: 100,
+           ease: 'Back.easeOut',
+           yoyo: true,
+           onComplete: () => {
+             this.showBuildingPanel(cat.category)
+             this.updateCategoryButtons(cat.category)
+           }
+         })
+         this.createSparkleEffect(x, 0)
+       }
+       icon.on('pointerdown', handleCategoryClick)
+       nameText.on('pointerdown', handleCategoryClick)
+      
+      // Store category button (using buttonContainer instead of separate hitArea)
       const catBtn: CategoryButton = {
-        bg: button,
+        container: buttonContainer,
         icon: icon,
         category: cat.category
       }
       this.categoryButtons.push(catBtn)
       
-      // Category button interactions
-      button.on('pointerdown', () => {
-        this.showBuildingPanel(cat.category)
-        this.updateCategoryButtons(cat.category)
+      // Enhanced button interactions with cute animations
+      buttonContainer.on('pointerdown', () => {
+        // Bounce effect on click
+        this.tweens.add({
+          targets: [buttonContainer, icon, nameText],
+          scaleX: 0.9,
+          scaleY: 0.9,
+          duration: 100,
+          ease: 'Back.easeOut',
+          yoyo: true,
+          onComplete: () => {
+            this.showBuildingPanel(cat.category)
+            this.updateCategoryButtons(cat.category)
+          }
+        })
+        
+        // Sparkle effect
+        this.createSparkleEffect(x, 0)
       })
       
-      button.on('pointerover', () => {
-        button.setScale(1.1)
-        icon.setScale(1.1)
+      buttonContainer.on('pointerover', () => {
+        
+        // Glow effect
+        button.clear()
+        button.fillGradientStyle(
+          this.lightenColor(cat.color, 15), this.lightenColor(cat.color, 15),
+          this.lightenColor(cat.color, 35), this.lightenColor(cat.color, 35),
+          1, 1, 0.95, 0.95
+        )
+        button.fillRoundedRect(-28, -30, 56, 60, 16)
+        button.lineStyle(3, 0xffffff, 0.6)
+        button.strokeRoundedRect(-28, -30, 56, 60, 16)
       })
       
-      button.on('pointerout', () => {
+      buttonContainer.on('pointerout', () => {
         if (this.currentCategory !== cat.category) {
-          button.setScale(1)
-          icon.setScale(1)
+          // Return to normal size
+          this.tweens.add({
+            targets: [buttonContainer, icon, nameText],
+            scaleX: 1,
+            scaleY: 1,
+            duration: 200,
+            ease: 'Back.easeOut'
+          })
+          
+          // Return to normal colors
+          button.clear()
+          button.fillGradientStyle(cat.color, cat.color, this.lightenColor(cat.color, 20), this.lightenColor(cat.color, 20), 1, 1, 0.9, 0.9)
+          button.fillRoundedRect(-28, -30, 56, 60, 16)
+          button.lineStyle(2, 0xffffff, 0.3)
+          button.strokeRoundedRect(-28, -30, 56, 60, 16)
         }
       })
     })
     
+    // Decorative elements removed
+    
     // Make UI always on top
     this.uiContainer.setDepth(10000)
+  }
+  
+  private lightenColor(color: number, amount: number): number {
+    const r = (color >> 16) & 0xff
+    const g = (color >> 8) & 0xff
+    const b = color & 0xff
     
+    const newR = Math.min(255, r + amount)
+    const newG = Math.min(255, g + amount)
+    const newB = Math.min(255, b + amount)
+    
+    return (newR << 16) | (newG << 8) | newB
+  }
+  
+  private createSparkleEffect(x: number, y: number) {
+    for (let i = 0; i < 6; i++) {
+      const sparkle = this.add.text(
+        x + (Math.random() - 0.5) * 40,
+        y + (Math.random() - 0.5) * 40,
+        '✨',
+        { fontSize: '12px' }
+      ).setOrigin(0.5)
+      
+      this.uiContainer?.add(sparkle)
+      
+      this.tweens.add({
+        targets: sparkle,
+        alpha: 0,
+        scale: 1.5,
+        y: sparkle.y - 30,
+        duration: 800,
+        ease: 'Power2.easeOut',
+        onComplete: () => sparkle.destroy()
+      })
+    }
+  }
+  
+  
+  
+  private getColorForBuilding(color: string): number {
+    const colorMap: { [key: string]: number } = {
+      'Blue': 0x3498db,
+      'Green': 0x2ecc71,
+      'Red': 0xe74c3c,
+      'Yellow': 0xf1c40f,
+      'Pink': 0xe91e63,
+      'Grey': 0x95a5a6
+    }
+    return colorMap[color] || 0x7f8c8d
   }
   
   private showBuildingPanel(category: string) {
@@ -239,6 +391,7 @@ export default class IsometricScene extends Phaser.Scene {
     if (category === 'delete') {
       // Delete mode
       this.selectedBuilding = null
+      this.clearBuildingPreview()
       return
     }
     
@@ -254,8 +407,8 @@ export default class IsometricScene extends Phaser.Scene {
     // Set dialog open flag
     this.dialogOpen = true
     
-    // Create fullscreen overlay
-    const overlay = this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.7)
+    // Create fullscreen overlay with subtle blur effect
+    const overlay = this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.8)
     overlay.setInteractive() // Block clicks underneath
     overlay.setDepth(20000)
     
@@ -263,39 +416,49 @@ export default class IsometricScene extends Phaser.Scene {
     const dialogContainer = this.add.container(width/2, height/2)
     dialogContainer.setDepth(20001)
     
-    // Dialog background
-    const dialogWidth = 700
-    const dialogHeight = 500
-    const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x2c3e50, 1)
-    dialogBg.setStrokeStyle(3, 0xffffff, 0.8)
-    dialogContainer.add(dialogBg)
+    // Dialog background with modern gradient and rounded corners
+    const dialogWidth = 720
+    const dialogHeight = 520
+    const dialogBg = this.add.graphics()
+    dialogBg.fillGradientStyle(0x2c3e50, 0x2c3e50, 0x34495e, 0x34495e, 1, 1, 0.95, 0.95)
+    dialogBg.fillRoundedRect(-dialogWidth/2, -dialogHeight/2, dialogWidth, dialogHeight, 20)
     
-    // Title bar
-    const titleBar = this.add.rectangle(0, -dialogHeight/2 + 30, dialogWidth, 60, 0x34495e, 1)
+    // Add glow effect around dialog
+    const dialogGlow = this.add.graphics()
+    dialogGlow.fillStyle(0x3498db, 0.1)
+    dialogGlow.fillRoundedRect(-dialogWidth/2 - 5, -dialogHeight/2 - 5, dialogWidth + 10, dialogHeight + 10, 25)
+    dialogContainer.add([dialogGlow, dialogBg])
+    
+    // Modern title bar with gradient
+    const titleBar = this.add.graphics()
+    titleBar.fillGradientStyle(0x3498db, 0x3498db, 0x2980b9, 0x2980b9, 1, 1, 0.9, 0.9)
+    titleBar.fillRoundedRect(-dialogWidth/2, -dialogHeight/2, dialogWidth, 70, { tl: 20, tr: 20, bl: 0, br: 0 })
     dialogContainer.add(titleBar)
     
-    // Title text
-    let titleString = '🏠 Select Apartment'
-    if (category === 'roads') titleString = '🛤️ Select Road'
-    if (category === 'signature') titleString = '🏛️ Select Signature Building'
+    // Title text with better styling
+    let titleString = '🏠 Cozy Homes Collection'
+    if (category === 'roads') titleString = '🛤️ Pathways & Routes'
+    if (category === 'signature') titleString = '🏛️ Special Buildings'
     
-    const titleText = this.add.text(0, -dialogHeight/2 + 30, titleString, {
+    const titleText = this.add.text(0, -dialogHeight/2 + 35, titleString, {
+      fontSize: '26px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      fontFamily: 'Arial, sans-serif'
+    }).setOrigin(0.5)
+    
+    dialogContainer.add([titleText])
+    
+    // Close button (text only)
+    const closeBtnX = dialogWidth/2 - 30
+    const closeBtnY = -dialogHeight/2 + 35
+    
+    const closeText = this.add.text(closeBtnX, closeBtnY, '✕', {
       fontSize: '24px',
       color: '#ffffff',
       fontStyle: 'bold'
     }).setOrigin(0.5)
-    dialogContainer.add(titleText)
-    
-    // Close button
-    const closeBtn = this.add.rectangle(dialogWidth/2 - 30, -dialogHeight/2 + 30, 40, 40, 0xe74c3c, 1)
-    closeBtn.setInteractive({ useHandCursor: true })
-    closeBtn.setStrokeStyle(2, 0xffffff, 0.5)
-    dialogContainer.add(closeBtn)
-    
-    const closeText = this.add.text(dialogWidth/2 - 30, -dialogHeight/2 + 30, '✕', {
-      fontSize: '20px',
-      color: '#ffffff'
-    }).setOrigin(0.5)
+    closeText.setInteractive({ useHandCursor: true })
     dialogContainer.add(closeText)
     
     // Content area
@@ -310,7 +473,7 @@ export default class IsometricScene extends Phaser.Scene {
       const colors = ['Blue', 'Green', 'Red', 'Yellow', 'Pink', 'Grey']
       const sizes = [
         { size: '1x1', level: 'Level1', label: 'Small' },
-        { size: '2x2', level: 'Level1', label: 'Large' }
+        // { size: '2x2', level: 'Level1', label: 'Large' }
       ]
       
       let itemIndex = 0
@@ -323,15 +486,27 @@ export default class IsometricScene extends Phaser.Scene {
             const x = (col - gridCols/2 + 0.5) * (itemSize + spacing)
             const y = contentY + row * (itemSize + spacing) + 50
             
-            // Item background
-            const itemBg = this.add.rectangle(x, y, itemSize, itemSize, 0x465669, 1)
-            itemBg.setStrokeStyle(2, 0x667788, 0.5)
-            itemBg.setInteractive({ useHandCursor: true })
-            dialogContainer.add(itemBg)
+            // Modern item container with layered design
+            const itemContainer = this.add.container(x, y)
+            
+            // Shadow for depth
+            const shadow = this.add.graphics()
+            shadow.fillStyle(0x000000, 0.2)
+            shadow.fillRoundedRect(-itemSize/2 + 2, -itemSize/2 + 2, itemSize, itemSize, 15)
+            itemContainer.add(shadow)
+            
+            // Main item background with gradient
+            const itemBg = this.add.graphics()
+            const bgColor = this.getColorForBuilding(color)
+            itemBg.fillGradientStyle(bgColor, bgColor, this.lightenColor(bgColor, 20), this.lightenColor(bgColor, 20), 1, 1, 0.8, 0.8)
+            itemBg.fillRoundedRect(-itemSize/2, -itemSize/2, itemSize, itemSize, 12)
+            itemBg.lineStyle(2, 0xffffff, 0.3)
+            itemBg.strokeRoundedRect(-itemSize/2, -itemSize/2, itemSize, itemSize, 12)
+            itemContainer.add(itemBg)
             
             // Building image
             const key = `apartment_${color}_${sizeInfo.size}_${sizeInfo.level}`
-            const img = this.add.image(x, y - 10, key)
+            const img = this.add.image(0, -15, key)
             
             // Scale based on building size to fit in box
             let scale = 0.12 // Default for 1x1
@@ -339,32 +514,90 @@ export default class IsometricScene extends Phaser.Scene {
               scale = 0.06 // Smaller for large buildings
             }
             img.setScale(scale)
-            dialogContainer.add(img)
+            itemContainer.add(img)
             
-            // Label
-            const label = this.add.text(x, y + 45, `${color} ${sizeInfo.label}`, {
-              fontSize: '12px',
+            // Modern label with background
+            const labelBg = this.add.graphics()
+            labelBg.fillStyle(0x000000, 0.6)
+            labelBg.fillRoundedRect(-45, 30, 90, 20, 10)
+            itemContainer.add(labelBg)
+            
+            const label = this.add.text(0, 40, `${color} ${sizeInfo.label}`, {
+              fontSize: '11px',
               color: '#ffffff',
-              align: 'center'
+              align: 'center',
+              fontFamily: 'Arial, sans-serif',
+              fontStyle: 'bold'
             }).setOrigin(0.5)
-            dialogContainer.add(label)
+            itemContainer.add(label)
             
-            // Interactions
-            itemBg.on('pointerover', () => {
-              itemBg.setFillStyle(0x556983)
-              img.setScale(scale * 1.1) // Scale up by 10% on hover
+            // Add cute emoji indicator
+            
+            dialogContainer.add(itemContainer)
+            
+            // Interactive area
+            const hitArea = this.add.rectangle(x, y, itemSize, itemSize, 0x000000, 0)
+            hitArea.setInteractive({ useHandCursor: true })
+            dialogContainer.add(hitArea)
+            
+            // Enhanced interactions with cute animations
+            hitArea.on('pointerover', () => {
+              this.tweens.add({
+                targets: itemContainer,
+                scaleX: 1.05,
+                scaleY: 1.05,
+                duration: 200,
+                ease: 'Back.easeOut'
+              })
+              
+              // Glow effect
+              itemBg.clear()
+              itemBg.fillGradientStyle(
+                this.lightenColor(bgColor, 25), this.lightenColor(bgColor, 25),
+                this.lightenColor(bgColor, 45), this.lightenColor(bgColor, 45),
+                1, 1, 0.9, 0.9
+              )
+              itemBg.fillRoundedRect(-itemSize/2, -itemSize/2, itemSize, itemSize, 12)
+              itemBg.lineStyle(3, 0xffffff, 0.6)
+              itemBg.strokeRoundedRect(-itemSize/2, -itemSize/2, itemSize, itemSize, 12)
             })
             
-            itemBg.on('pointerout', () => {
-              itemBg.setFillStyle(0x465669)
-              img.setScale(scale) // Return to original scale
+            hitArea.on('pointerout', () => {
+              this.tweens.add({
+                targets: itemContainer,
+                scaleX: 1,
+                scaleY: 1,
+                duration: 200,
+                ease: 'Back.easeOut'
+              })
+              
+              // Return to normal
+              itemBg.clear()
+              itemBg.fillGradientStyle(bgColor, bgColor, this.lightenColor(bgColor, 20), this.lightenColor(bgColor, 20), 1, 1, 0.8, 0.8)
+              itemBg.fillRoundedRect(-itemSize/2, -itemSize/2, itemSize, itemSize, 12)
+              itemBg.lineStyle(2, 0xffffff, 0.3)
+              itemBg.strokeRoundedRect(-itemSize/2, -itemSize/2, itemSize, itemSize, 12)
             })
             
-            itemBg.on('pointerdown', () => {
-              this.selectBuilding(key)
-              this.dialogOpen = false
-              overlay.destroy()
-              dialogContainer.destroy(true)
+            hitArea.on('pointerdown', () => {
+              // Bounce effect
+              this.tweens.add({
+                targets: itemContainer,
+                scaleX: 0.95,
+                scaleY: 0.95,
+                duration: 100,
+                ease: 'Back.easeOut',
+                yoyo: true,
+                onComplete: () => {
+                  this.selectBuilding(key)
+                  this.dialogOpen = false
+                  overlay.destroy()
+                  dialogContainer.destroy(true)
+                }
+              })
+              
+              // Sparkle effect
+              this.createSparkleEffect(x, y)
             })
           }
           itemIndex++
@@ -489,35 +722,72 @@ export default class IsometricScene extends Phaser.Scene {
     }
     
     // Close button functionality
-    closeBtn.on('pointerover', () => {
-      closeBtn.setFillStyle(0xc0392b)
-      closeBtn.setScale(1.1)
-      closeText.setScale(1.1)
+    closeText.on('pointerover', () => {
+      this.tweens.add({
+        targets: closeText,
+        scaleX: 1.2,
+        scaleY: 1.2,
+        duration: 150,
+        ease: 'Back.easeOut'
+      })
+      closeText.setColor('#ff6b6b')
     })
     
-    closeBtn.on('pointerout', () => {
-      closeBtn.setFillStyle(0xe74c3c)
-      closeBtn.setScale(1)
-      closeText.setScale(1)
+    closeText.on('pointerout', () => {
+      this.tweens.add({
+        targets: closeText,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 150,
+        ease: 'Back.easeOut'
+      })
+      closeText.setColor('#ffffff')
     })
     
-    closeBtn.on('pointerdown', () => {
-      this.dialogOpen = false
-      overlay.destroy()
-      dialogContainer.destroy(true)
+    closeText.on('pointerdown', () => {
+      // Bounce effect
+      this.tweens.add({
+        targets: closeText,
+        scaleX: 0.8,
+        scaleY: 0.8,
+        duration: 100,
+        ease: 'Back.easeOut',
+        yoyo: true,
+        onComplete: () => {
+          this.dialogOpen = false
+          overlay.destroy()
+          dialogContainer.destroy(true)
+        }
+      })
     })
   }
   
   private updateCategoryButtons(activeCategory: string) {
     this.categoryButtons.forEach(btn => {
       if (btn.category === activeCategory) {
-        btn.bg.setScale(1.1)
-        btn.bg.setStrokeStyle(3, 0xffd700, 1)
-        btn.icon.setScale(1.1)
+        // Add golden glow for active button
+        this.tweens.add({
+          targets: [btn.container, btn.icon],
+          scale: 1.15,
+          duration: 200,
+          ease: 'Back.easeOut'
+        })
+        
+        // Add pulsing effect for active state
+        this.tweens.add({
+          targets: btn.icon,
+          alpha: 0.8,
+          duration: 1000,
+          ease: 'Sine.easeInOut',
+          yoyo: true,
+          repeat: -1
+        })
       } else {
-        btn.bg.setScale(1)
-        btn.bg.setStrokeStyle(2, 0xffffff, 0.5)
+        // Return to normal state
+        this.tweens.killTweensOf([btn.container, btn.icon])
+        btn.container.setScale(1)
         btn.icon.setScale(1)
+        btn.icon.setAlpha(1)
       }
     })
   }
@@ -613,6 +883,12 @@ export default class IsometricScene extends Phaser.Scene {
         this.updateBuildingPositions()
       }
       
+      // Update building preview position
+      if (this.buildingPreview && this.selectedBuilding && !this.isDragging) {
+        this.buildingPreview.setPosition(pointer.x, pointer.y)
+        this.buildingPreview.setVisible(true)
+      }
+
       // Handle tile highlighting
       if (!this.isDragging && this.gridContainer && this.highlightGraphics) {
         // Convert pointer position to local container space, accounting for scale
@@ -904,6 +1180,9 @@ export default class IsometricScene extends Phaser.Scene {
     }
     
     this.buildings.push(building)
+    
+    // Clear the building preview after successful placement
+    this.clearBuildingPreview()
   }
 
   private resortGridChildrenByDepth() {
@@ -951,6 +1230,9 @@ export default class IsometricScene extends Phaser.Scene {
     // Roads don't occupy the tile for buildings
     // Update road NPC path whenever roads change
     this.updateRoadNpcPath()
+    
+    // Clear the building preview after successful placement
+    this.clearBuildingPreview()
   }
 
   private getBuildingSize(buildingKey: string): BuildingSize {
@@ -996,10 +1278,43 @@ export default class IsometricScene extends Phaser.Scene {
   
   private selectBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
+    this.createBuildingPreview(buildingKey)
   }
 
   public setSelectedBuilding(buildingKey: string) {
     this.selectedBuilding = buildingKey
+    this.createBuildingPreview(buildingKey)
+  }
+
+  private createBuildingPreview(buildingKey: string) {
+    // Remove existing preview
+    if (this.buildingPreview) {
+      this.buildingPreview.destroy()
+      this.buildingPreview = null
+    }
+
+    // Create new preview
+    this.buildingPreview = this.add.image(0, 0, buildingKey)
+    this.buildingPreview.setAlpha(0.5)
+    this.buildingPreview.setDepth(50000) // Above everything else
+    
+    // Scale the preview appropriately
+    const buildingSize = this.getBuildingSize(buildingKey)
+    if (buildingSize.width === 2) {
+      this.buildingPreview.setScale(0.06) // 2x2 buildings
+    } else {
+      this.buildingPreview.setScale(0.12) // 1x1 buildings
+    }
+    
+    // Initially hide it until cursor moves
+    this.buildingPreview.setVisible(false)
+  }
+
+  private clearBuildingPreview() {
+    if (this.buildingPreview) {
+      this.buildingPreview.destroy()
+      this.buildingPreview = null
+    }
   }
   
   private initializeStartingBuildings() {
@@ -1046,6 +1361,7 @@ export default class IsometricScene extends Phaser.Scene {
     
     // Clear selection after initialization
     this.selectedBuilding = null
+    this.clearBuildingPreview()
   }
 
   // --- Road + NPC helpers ---
@@ -1532,12 +1848,14 @@ export default class IsometricScene extends Phaser.Scene {
       closeBtn.setFillStyle(0xc0392b)
       closeBtn.setScale(1.1)
       closeText.setScale(1.1)
+      closeBtn.setY(-dialogHeight/2 + 35)
     })
     
     closeBtn.on('pointerout', () => {
       closeBtn.setFillStyle(0xe94560)
       closeBtn.setScale(1)
       closeText.setScale(1)
+      closeBtn.setY(-dialogHeight/2 + 35)
     })
     
     closeBtn.on('pointerdown', () => {
